@@ -5,6 +5,9 @@ from django.contrib.auth import get_user_model
 from django.db.models import Count, Q
 from django.utils import timezone
 from datetime import timedelta
+from apps.properties.models import Property
+from apps.mandates.models import Mandate
+from django.db.models import Count, Avg, Q
 
 # Import models from other apps
 from apps.properties.models import Property
@@ -22,28 +25,54 @@ class IsSuperAdmin(permissions.BasePermission):
 # ==========================================
 
 class AdminDashboardStats(APIView):
-    permission_classes = [IsSuperAdmin]
+    """
+    A professional HQ view providing real-time platform KPIs.
+    Strictly restricted to Super Admins.
+    """
+    permission_classes = [permissions.IsAdminUser]
 
     def get(self, request):
-        today = timezone.now().date()
-        last_30_days = timezone.now() - timedelta(days=30)
+        now = timezone.now()
+        last_30_days = now - timedelta(days=30)
 
         return Response({
+            # --- 1. User & Growth Metrics ---
             "users": {
                 "total": User.objects.count(),
                 "sellers": User.objects.filter(is_active_seller=True).count(),
                 "brokers": User.objects.filter(is_active_broker=True).count(),
-                "new_this_month": User.objects.filter(date_joined__gte=last_30_days).count()
+                "new_this_month": User.objects.filter(date_joined__gte=last_30_days).count(),
+                "kyc_verified": User.objects.filter(kycverification__status='VERIFIED').count(),
+                "kyc_pending": User.objects.filter(kycverification__status='INITIATED').count(),
             },
+
+            # --- 2. Inventory (Property) Metrics ---
             "properties": {
                 "total": Property.objects.count(),
-                "pending": Property.objects.filter(verification_status='PENDING').count(),
-                "verified": Property.objects.filter(verification_status='VERIFIED').count(),
+                "pending_verification": Property.objects.filter(verification_status='PENDING').count(),
+                "live_verified": Property.objects.filter(verification_status='VERIFIED').count(),
                 "rejected": Property.objects.filter(verification_status='REJECTED').count(),
             },
-            "revenue_simulation": {
-                # Placeholder if you add monetization later
-                "total_deals_closed": 0 
+
+            # --- 3. Legal & Deal Pipeline (Mandates) ---
+            "mandates": {
+                "total_requests": Mandate.objects.count(),
+                "active_legal_deals": Mandate.objects.filter(status='ACTIVE').count(),
+                "pending_signatures": Mandate.objects.filter(status='PENDING').count(),
+                "expired_this_month": Mandate.objects.filter(status='EXPIRED', end_date__gte=now.date()).count(),
+            },
+
+            # --- 4. Market Intelligence (For Frontend Charts) ---
+            "market_insights": {
+                "avg_property_price": Property.objects.filter(verification_status='VERIFIED').aggregate(Avg('total_price'))['total_price__avg'] or 0,
+                "top_localities": Property.objects.values('locality').annotate(count=Count('id')).order_by('-count')[:5],
+                "inventory_by_bhk": Property.objects.values('bhk_config').annotate(count=Count('id')).order_by('bhk_config'),
+            },
+
+            # --- 5. System Health ---
+            "platform_meta": {
+                "last_updated": now,
+                "server_time": now.strftime("%Y-%m-%d %H:%M:%S")
             }
         })
 

@@ -33,3 +33,16 @@ pass : admin
 
 docker compose down
 docker compose up
+
+
+{
+    "refresh": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ0b2tlbl90eXBlIjoicmVmcmVzaCIsImV4cCI6MTc2ODQzMjY2MiwiaWF0IjoxNzY3MjIzMDYyLCJqdGkiOiIxMzM5MjcxMjA1OTQ0ZWQ4OWYxM2EyOTE4NmZlNWZiMiIsInVzZXJfaWQiOiIyOWEwMDZjOS1hN2EyLTRkOGItYTkxMS1kYmU1NDhlNzRkNGUifQ.QjhYMM2Cw0Bctf1p7yzMvq8P8l3rGTr2ETpusc1ZTnQ",
+    "access": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ0b2tlbl90eXBlIjoiYWNjZXNzIiwiZXhwIjoxNzY3ODI3ODYyLCJpYXQiOjE3NjcyMjMwNjIsImp0aSI6IjI3MGY4YjE1OTM5OTQ2MmY5YmM4YWM1MmUzYjMyNzZiIiwidXNlcl9pZCI6IjI5YTAwNmM5LWE3YTItNGQ4Yi1hOTExLWRiZTU0OGU3NGQ0ZSJ9.MQNtNiMuF8VvxMEK8I-Q6VLlitX3OoOV8N6VY1dCNrE",
+    "user": {
+        "id": "29a006c9-a7a2-4d8b-a911-dbe548e74d4e",
+        "email": "kutubahemad3@gmail.com",
+        "full_name": "",
+        "is_active_seller": false,
+        "is_active_broker": false
+    }
+}
