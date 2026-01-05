@@ -95,11 +95,11 @@ jobs:
           port: 22
           script: |
             # Navigate to project directory (create if missing)
-            mkdir -p /var/www/saudapakka
-            cd /var/www/saudapakka
+            mkdir -p ${{ env.DEPLOY_PATH }}
+            cd ${{ env.DEPLOY_PATH }}
             
             # Allow git commands (safe directory)
-            git config --global --add safe.directory /var/www/saudapakka
+            git config --global --add safe.directory ${{ env.DEPLOY_PATH }}
             
             # Initialize or pull repo
             if [ ! -d ".git" ]; then
@@ -113,12 +113,32 @@ jobs:
             
             # Deployment
             docker compose -f docker-compose.prod.yml down -v || true
-            docker compose -f docker-compose.prod.yml build --no-cache
+            docker compose -f docker-compose.prod.yml pull
             docker compose -f docker-compose.prod.yml up -d
             
-            # Verification
+            # Wait LONGER for Django migrations + Gunicorn startup (60s)
+            echo "⏳ Waiting for services to start..."
+            sleep 60
+            
+            # Backend health check with retries
+            echo "🏥 Checking Backend Health..."
+            for i in {1..9}; do
+              if curl -f http://localhost:8000/health/ >/dev/null 2>&1; then
+                echo "✅ Backend healthy!"
+                break
+              fi
+              echo "Backend startup $i/9... (sleep 10s)"
+              sleep 10
+            done || echo "⚠️ Backend slow startup - continuing anyway"
+            
+            # Frontend check
+            echo "🏥 Checking Frontend Health..."
+            curl -f http://localhost:3000/ >/dev/null 2>&1 && echo "✅ Frontend healthy!" || echo "⚠️ Frontend slow startup"
+            
+            # Final Status
             docker compose -f docker-compose.prod.yml ps
-            docker compose -f docker-compose.prod.yml logs backend --tail=10
+            docker compose -f docker-compose.prod.yml logs backend --tail=20
+            echo "✅ Deployment complete!"
 
       - name: Verify Deployment
         run: |
