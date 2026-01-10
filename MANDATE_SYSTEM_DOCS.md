@@ -135,3 +135,63 @@ Creates a new `PENDING` mandate linked to the old expired one.
 4.  **Role Logic**:
     *   If `user.is_active_broker` is true -> Show options to initiate mandates on Properties they view.
     *   If `user.is_active_seller` is true -> Show "My Mandates" dashboard with "Hire Broker" button.
+
+---
+
+## 4. Detailed User Discovery & Initiation Logic
+
+### How Users Find Each Other
+
+1.  **Seller finding a Broker**:
+    *   **UI**: Seller enters a mobile number in a search box.
+    *   **API**: Call `GET /api/mandates/search_broker/?mobile_number=...`
+    *   **Result**: If `200 OK`, show the Broker's Name. Use the `id` from the response in the Initiate Mandate payload.
+
+2.  **Broker finding a Seller**:
+    *   **UI**: Broker browses the "All Properties" list.
+    *   **API**: No search needed. The Broker clicks "Propose Mandate" on a Property.
+    *   **Payload**: Send `property_item: <property_id>` and `initiated_by: "BROKER"`. The backend **automatically** links it to the Property Owner (Seller).
+
+3.  **Seller finding the Platform**:
+    *   **UI**: Seller selects "Partner with SaudaPakka" option.
+    *   **API**: Send `deal_type: "WITH_PLATFORM"`.
+    *   **Payload**: Do **NOT** send a `broker` ID. The system routes this to Admins.
+
+---
+
+## 5. Notification Center Integration
+
+**Endpoint**: `/api/notifications/`
+
+**1. Fetching Notifications**
+*   **Request**: `GET /api/notifications/`
+*   **Response**:
+    ```json
+    [
+      {
+        "id": 101,
+        "title": "New Mandate Request",
+        "message": "John Doe has initiated a mandate...",
+        "action_url": "/mandates/55",
+        "is_read": false,
+        "created_at": "2026-01-10T10:00:00Z"
+      }
+    ]
+    ```
+
+**2. Handling Clicks**
+1.  User clicks the notification item.
+2.  Frontend calls `POST /api/notifications/101/mark_as_read/`.
+3.  Frontend negotiates to `action_url` (e.g., `/mandates/55`).
+
+---
+
+## 6. Mandate Status Lifecycle
+
+*   **PENDING**: Created, waiting for the partner to Accept/Sign.
+*   **ACTIVE**: Both parties have agreed (Signed). Time starts ticking (90 days).
+*   **REJECTED**: Partner declined the request.
+*   **TERMINATED_BY_USER**: Cancelled manually by Seller/Broker.
+*   **EXPIRED**: 90 days passed without renewal.
+
+> **Note**: A Property CANNOT have a new Mandate initiated if it currently has a **PENDING** or **ACTIVE** mandate.
