@@ -8,6 +8,7 @@ class MandateSerializer(serializers.ModelSerializer):
     
     # 2. Get names from the updated User model (first + last name)
     seller_name = serializers.SerializerMethodField()
+    seller_role = serializers.SerializerMethodField()
     broker_name = serializers.SerializerMethodField()
     
     # 3. Add the helper countdown fields for the frontend
@@ -22,6 +23,7 @@ class MandateSerializer(serializers.ModelSerializer):
             'property_details', 
             'seller', 
             'seller_name', 
+            'seller_role',
             'broker', 
             'broker_name', 
             'deal_type', 
@@ -40,7 +42,10 @@ class MandateSerializer(serializers.ModelSerializer):
             'seller_signature', 
             'broker_signature',
             'rejection_reason',
-            'renewed_from'
+            'renewed_from',
+            'seller_selfie',
+            'broker_selfie',
+            'mandate_number'
         ]
         read_only_fields = ['status', 'acceptance_expires_at', 'end_date', 'signed_at', 'seller']
 
@@ -58,3 +63,13 @@ class MandateSerializer(serializers.ModelSerializer):
                 return "SaudaPakka (Platform)"
             return f"{obj.broker.first_name} {obj.broker.last_name}".strip()
         return "Not Assigned"
+        
+    def get_seller_role(self, obj):
+        if obj.seller:
+            cat = obj.seller.role_category
+            if cat == 'PLOTTING_AGENCY':
+                return "Plotting Agency"
+            elif cat == 'BUILDER':
+                return "Builder"
+            return "Property Owner" # Default for Seller/Buyer
+        return "Unknown"

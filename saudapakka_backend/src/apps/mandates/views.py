@@ -1,4 +1,4 @@
-from rest_framework import viewsets, permissions, status
+from rest_framework import viewsets, permissions, status, filters, exceptions
 from django.db.models import Q
 from rest_framework.decorators import action
 from rest_framework.response import Response
@@ -12,6 +12,10 @@ from apps.users.models import User
 class MandateViewSet(viewsets.ModelViewSet):
     serializer_class = MandateSerializer
     permission_classes = [permissions.IsAuthenticated]
+    
+    # Enable Search
+    filter_backends = [filters.SearchFilter]
+    search_fields = ['mandate_number', 'property_item__title', 'seller__first_name', 'seller__last_name', 'broker__first_name']
 
     def get_queryset(self):
         user = self.request.user
@@ -30,9 +34,33 @@ class MandateViewSet(viewsets.ModelViewSet):
                 message=message,
                 action_url=action_url
             )
+    
+    def _check_kyc_required(self, user):
+        """
+        Optimized KYC check using cached field - NO database queries!
+        Returns True if KYC is required and not verified.
+        """
+        # Admin bypass
+        if user.is_staff:
+            return False
+        
+        # Only these roles need KYC
+        kyc_required_roles = ['SELLER', 'BROKER', 'BUILDER', 'PLOTTING_AGENCY']
+        if user.role_category not in kyc_required_roles:
+            return False
+        
+        # Check cached KYC status (no DB query!)
+        return not user.is_kyc_verified
 
     def perform_create(self, serializer):
         user = self.request.user
+        
+        # KYC Verification Check (must be first)
+        if self._check_kyc_required(user):
+            raise permissions.PermissionDenied(
+                "KYC verification required. Please complete KYC or contact support."
+            )
+        
         initiated_by_payload = self.request.data.get('initiated_by')
         
         print(f"DEBUG: Mandate Creation Started by {user.email} ({user.id})")
@@ -68,12 +96,18 @@ class MandateViewSet(viewsets.ModelViewSet):
             seller = property_instance.owner
             
             sys_broker_sig = self.request.FILES.get('broker_signature') or self.request.data.get('broker_signature')
+            sys_broker_selfie = self.request.FILES.get('broker_selfie') or self.request.data.get('broker_selfie')
+            
+            # Validation
+            if not sys_broker_sig: raise ValidationError("Broker signature is mandatory.")
+            if not sys_broker_selfie: raise ValidationError("Broker verification selfie is mandatory.")
             
             mandate = serializer.save(
                 broker=user, 
                 initiated_by='BROKER', 
                 seller=seller,
-                broker_signature=sys_broker_sig 
+                broker_signature=sys_broker_sig,
+                broker_selfie=sys_broker_selfie
             )
             recipient = mandate.seller
             print(f"DEBUG: Broker initiated. Recipient (Seller): {recipient}")
@@ -83,13 +117,19 @@ class MandateViewSet(viewsets.ModelViewSet):
             print(f"DEBUG: Seller initiated. Deal Type: {deal_type}")
             
             sys_seller_sig = self.request.FILES.get('seller_signature') or self.request.data.get('seller_signature')
+            sys_seller_selfie = self.request.FILES.get('seller_selfie') or self.request.data.get('seller_selfie')
+
+            # Validation
+            if not sys_seller_sig: raise ValidationError("Seller signature is mandatory.")
+            if not sys_seller_selfie: raise ValidationError("Seller verification selfie is mandatory.")
 
             if deal_type == 'WITH_PLATFORM':
                  mandate = serializer.save(
                      seller=user, 
                      initiated_by='SELLER', 
                      deal_type='WITH_PLATFORM',
-                     seller_signature=sys_seller_sig
+                     seller_signature=sys_seller_sig,
+                     seller_selfie=sys_seller_selfie
                  )
                  # Notify all admins
                  admins = User.objects.filter(is_superuser=True)
@@ -109,7 +149,8 @@ class MandateViewSet(viewsets.ModelViewSet):
                 mandate = serializer.save(
                     seller=user, 
                     initiated_by='SELLER',
-                    seller_signature=sys_seller_sig
+                    seller_signature=sys_seller_sig,
+                    seller_selfie=sys_seller_selfie
                 )
                 recipient = mandate.broker
                 print(f"DEBUG: Seller initiated with Broker. Recipient (Broker): {recipient}")
@@ -130,14 +171,26 @@ class MandateViewSet(viewsets.ModelViewSet):
 
     @action(detail=True, methods=['post'])
     def accept_and_sign(self, request, pk=None):
+        # KYC Verification Check (sellers/brokers must be verified to accept)
+        if self._check_kyc_required(request.user):
+            raise permissions.PermissionDenied(
+                "KYC verification required. Please complete KYC or contact support."
+            )
+        
         mandate = self.get_object()
         
         if mandate.status != 'PENDING':
             return Response({"error": "This mandate is not in a pending state."}, status=400)
 
         signature_file = request.FILES.get('signature')
+        selfie_file = request.FILES.get('selfie')
+        
         if not signature_file:
             return Response({"error": "Digital signature file is required to accept."}, status=400)
+            
+        # Strict enforcement of Selfie
+        if not selfie_file:
+           return Response({"error": "Selfie verification is strictly required for acceptance."}, status=400)
 
         signer_role = None
         
@@ -146,16 +199,20 @@ class MandateViewSet(viewsets.ModelViewSet):
             if mandate.seller_signature:
                  return Response({"error": "You have already signed this mandate."}, status=400)
             mandate.seller_signature = signature_file
+            mandate.seller_selfie = selfie_file
             signer_role = 'SELLER'
             
         elif request.user == mandate.broker:
             if mandate.broker_signature:
                  return Response({"error": "You have already signed this mandate."}, status=400)
             mandate.broker_signature = signature_file
+            mandate.broker_selfie = selfie_file
             signer_role = 'BROKER'
             
         elif request.user.is_staff and mandate.deal_type == 'WITH_PLATFORM':
             mandate.broker_signature = signature_file
+            # Admin MUST provide selfie too if acting on behalf of platform
+            mandate.broker_selfie = selfie_file 
             signer_role = 'ADMIN'
         else:
              return Response({"error": "You are not a party to this mandate."}, status=403)
@@ -224,9 +281,9 @@ class MandateViewSet(viewsets.ModelViewSet):
     def cancel_mandate(self, request, pk=None):
         mandate = self.get_object()
         
-        # Allow cancellation if user is part of the deal
-        if request.user != mandate.seller and request.user != mandate.broker and not request.user.is_staff:
-             return Response({"error": "Permission denied."}, status=403)
+        # Strict Restriction: ONLY Admins can delete/cancel a mandate
+        if not request.user.is_staff:
+             return Response({"error": "Only Administrators can cancel a mandate once initiated."}, status=403)
              
         mandate.status = 'TERMINATED_BY_USER'
         mandate.end_date = timezone.now().date() # End it today
@@ -283,3 +340,128 @@ class MandateViewSet(viewsets.ModelViewSet):
             })
         except User.DoesNotExist:
             return Response({"error": "Broker not found with this number."}, status=404)
+    
+    @action(detail=True, methods=['get'], url_path='download-pdf')
+    def download_pdf(self, request, pk=None):
+        """Generate and download mandate as PDF"""
+        from django.http import HttpResponse
+        from reportlab.lib.pagesizes import A4
+        from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
+        from reportlab.lib.units import mm
+        from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, Table, TableStyle
+        from reportlab.lib import colors
+        from io import BytesIO
+        
+        mandate = self.get_object()
+        user = request.user
+        
+        # Check permissions: must be involved in mandate or admin
+        if not (user.is_staff or mandate.seller == user or mandate.broker == user):
+            return Response({"error": "You don't have permission to download this mandate"}, 
+                          status=status.HTTP_403_FORBIDDEN)
+        
+        # Create PDF buffer
+        buffer = BytesIO()
+        doc = SimpleDocTemplate(buffer, pagesize=A4, rightMargin=15*mm, leftMargin=15*mm, 
+                               topMargin=15*mm, bottomMargin=15*mm)
+        
+        # Container for PDF elements
+        elements = []
+        styles = getSampleStyleSheet()
+        
+        # Custom styles
+        title_style = ParagraphStyle(
+            'CustomTitle',
+            parent=styles['Heading1'],
+            fontSize=24,
+            textColor=colors.HexColor('#1e293b'),
+            spaceAfter=30,
+            alignment=1  # Center
+        )
+        
+        heading_style = ParagraphStyle(
+            'CustomHeading',
+            parent=styles['Heading2'],
+            fontSize=14,
+            textColor=colors.HexColor('#1e293b'),
+            spaceAfter=12
+        )
+        
+        # Title
+        elements.append(Paragraph("MANDATE LETTER", title_style))
+        elements.append(Paragraph("Marketing Authority Agreement", styles['Normal']))
+        elements.append(Paragraph(f"Reference: {mandate.mandate_number}", styles['Normal']))
+        elements.append(Spacer(1, 20))
+        
+        # Property Details
+        elements.append(Paragraph("Property Details", heading_style))
+        property_data = [
+            ['Title:', mandate.property_item.title if mandate.property_item else 'N/A'],
+            ['Type:', mandate.deal_type],
+        ]
+        property_table = Table(property_data, colWidths=[40*mm, 120*mm])
+        property_table.setStyle(TableStyle([
+            ('FONTNAME', (0, 0), (0, -1), 'Helvetica-Bold'),
+            ('FONTNAME', (1, 0), (1, -1), 'Helvetica'),
+            ('FONTSIZE', (0, 0), (-1, -1), 10),
+            ('BOTTOMPADDING', (0, 0), (-1, -1), 6),
+        ]))
+        elements.append(property_table)
+        elements.append(Spacer(1, 15))
+        
+        # Parties
+        elements.append(Paragraph("Parties Involved", heading_style))
+        parties_data = [
+            ['Seller:', f"{mandate.seller.full_name} ({mandate.seller.email})"],
+            ['Broker:', mandate.broker.full_name if mandate.broker else 'SaudaPakka Platform'],
+        ]
+        parties_table = Table(parties_data, colWidths=[40*mm, 120*mm])
+        parties_table.setStyle(TableStyle([
+            ('FONTNAME', (0, 0), (0, -1), 'Helvetica-Bold'),
+            ('FONTNAME', (1, 0), (1, -1), 'Helvetica'),
+            ('FONTSIZE', (0, 0), (-1, -1), 10),
+            ('BOTTOMPADDING', (0, 0), (-1, -1), 6),
+        ]))
+        elements.append(parties_table)
+        elements.append(Spacer(1, 15))
+        
+        # Mandate Terms
+        elements.append(Paragraph("Mandate Terms", heading_style))
+        terms_data = [
+            ['Status:', mandate.status],
+            ['Created:', mandate.created_at.strftime('%B %d, %Y')],
+            ['Valid Until:', mandate.end_date.strftime('%B %d, %Y') if mandate.end_date else 'N/A'],
+        ]
+        terms_table = Table(terms_data, colWidths=[40*mm, 120*mm])
+        terms_table.setStyle(TableStyle([
+            ('FONTNAME', (0, 0), (0, -1), 'Helvetica-Bold'),
+            ('FONTNAME', (1, 0), (1, -1), 'Helvetica'),
+            ('FONTSIZE', (0, 0), (-1, -1), 10),
+            ('BOTTOMPADDING', (0, 0), (-1, -1), 6),
+        ]))
+        elements.append(terms_table)
+        elements.append(Spacer(1, 30))
+        
+        # Signatures
+        elements.append(Paragraph("Signatures", heading_style))
+        elements.append(Paragraph(f"<b>Seller:</b> {mandate.seller.full_name}", styles['Normal']))
+        elements.append(Paragraph(f"Signed on: {mandate.created_at.strftime('%B %d, %Y')}", styles['Normal']))
+        elements.append(Spacer(1, 15))
+        
+        if mandate.broker:
+            elements.append(Paragraph(f"<b>Broker:</b> {mandate.broker.full_name}", styles['Normal']))
+            signed_date = mandate.signed_at.strftime('%B %d, %Y') if mandate.signed_at else 'Pending'
+            elements.append(Paragraph(f"Signed on: {signed_date}", styles['Normal']))
+        
+        # Build PDF
+        doc.build(elements)
+        
+        # Get PDF from buffer
+        pdf = buffer.getvalue()
+        buffer.close()
+        
+        # Create response
+        response = HttpResponse(pdf, content_type='application/pdf')
+        response['Content-Disposition'] = f'attachment; filename="Mandate_{mandate.mandate_number}.pdf"'
+        
+        return response

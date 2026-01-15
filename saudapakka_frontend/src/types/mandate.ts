@@ -26,14 +26,20 @@ export interface Mandate {
     broker_name?: string | null;
     seller?: number | string | null; // ID of the seller (owner)
     seller_name?: string | null;
+    seller_role?: string | null;
     seller_signature?: string | null; // URL or path
     broker_signature?: string | null; // URL or path
+    seller_selfie?: string | null; // URL or path
+    broker_selfie?: string | null; // URL or path
     is_exclusive: boolean;
     commission_rate?: number;
     status: MandateStatus;
     expiry_date?: string;
     created_at: string;
+    signed_at?: string;
     my_role?: 'INITIATOR' | 'RECIPIENT'; // Helper for frontend logic
+    property_details?: any; // The full property object from serializer
+    mandate_number?: string; // Mandate Ref No
 }
 
 export interface CreateMandatePayload {

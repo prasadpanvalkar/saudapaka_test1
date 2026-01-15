@@ -7,10 +7,13 @@ import { mandateService } from "@/services/mandateService";
 import { Mandate, MandateStatus, DealType } from "@/types/mandate";
 import MandateLetter from "@/components/mandates/MandateLetter";
 import SignaturePad from "@/components/mandates/SignaturePad";
-import { Loader2, ArrowLeft, CheckCircle, AlertTriangle, XCircle, FileText, Clock } from "lucide-react";
+import { Loader2, ArrowLeft, CheckCircle, AlertTriangle, XCircle, FileText, Clock, Camera, Download } from "lucide-react";
 import Link from "next/link";
 import { useAuth } from "@/hooks/use-auth";
 import { parseMandateTemplate } from "@/utils/mandateTemplateParser";
+
+import SelfieCapture from "@/components/ui/SelfieCapture"; // Added import
+import { downloadMandatePDF } from "@/utils/mandateDownload";
 
 export default function AdminMandateDetailsPage() {
     const params = useParams();
@@ -26,8 +29,12 @@ export default function AdminMandateDetailsPage() {
     // Admin Action State
     const [showSignModal, setShowSignModal] = useState(false);
     const [signature, setSignature] = useState<File | null>(null);
+    const [selfie, setSelfie] = useState<File | null>(null); // Added state
+    const [isSigning, setIsSigning] = useState(false); // New state for manual toggle
+    const [showSelfieStep, setShowSelfieStep] = useState(false); // Controls view inside modal
     const [isAgreed, setIsAgreed] = useState(false);
     const [scrolledToBottom, setScrolledToBottom] = useState(false);
+    const [showSelfieModal, setShowSelfieModal] = useState(false); // Added for consistency
 
     const scrollRef = useRef<HTMLDivElement>(null);
 
@@ -63,10 +70,11 @@ export default function AdminMandateDetailsPage() {
     };
 
     const handleAdminSign = async () => {
-        if (!signature || !mandate) return;
+        if (!signature || !mandate || !selfie) return; // Added !selfie check
         setActionLoading(true);
         try {
-            await mandateService.acceptAndSign(mandate.id, signature);
+            // Pass selfie to service
+            await mandateService.acceptAndSign(mandate.id, signature, selfie);
             setShowSignModal(false);
             fetchMandate();
             alert("Mandate Verified and Signed Successfully!");
@@ -76,6 +84,29 @@ export default function AdminMandateDetailsPage() {
         } finally {
             setActionLoading(false);
         }
+    };
+
+    const handleCancel = async () => {
+        if (!confirm("Are you sure you want to cancel this mandate? This action cannot be undone.")) return;
+        setActionLoading(true);
+        try {
+            await mandateService.cancelMandate(id);
+            fetchMandate(); // Reload to show new status
+            alert("Mandate cancelled successfully.");
+        } catch (err: any) {
+            console.error("Failed to cancel", err);
+            alert(err.response?.data?.error || "Failed to cancel mandate.");
+        } finally {
+            setActionLoading(false);
+        }
+    };
+
+    const resetModal = () => {
+        setShowSignModal(false);
+        setSignature(null);
+        setSelfie(null);
+        setShowSelfieStep(false);
+        setIsAgreed(false);
     };
 
     if (loading) return <div className="flex justify-center py-20"><Loader2 className="animate-spin text-primary-green w-8 h-8" /></div>;
@@ -165,12 +196,33 @@ export default function AdminMandateDetailsPage() {
                             </div>
                         ) : (
                             <div className="space-y-4">
+                                {/* Download Button for ACTIVE mandates */}
+                                {isActive && (
+                                    <button
+                                        onClick={() => downloadMandatePDF(mandate, propertyDetails || mandate.property_details, user || undefined)}
+                                        className="w-full bg-blue-600 hover:bg-blue-700 text-white py-3 rounded-xl font-bold shadow-lg flex items-center justify-center gap-2 transition-all"
+                                    >
+                                        <Download className="w-4 h-4" />
+                                        Download PDF
+                                    </button>
+                                )}
                                 <div className={`p-4 rounded-lg border text-sm ${isActive ? 'bg-green-50 border-green-100 text-green-800' : 'bg-gray-50 border-gray-100 text-gray-600'}`}>
                                     <h4 className="font-bold mb-1 flex items-center gap-2">
                                         {isActive ? <CheckCircle className="w-4 h-4" /> : <Clock className="w-4 h-4" />}
                                         Status: {mandate.status}
                                     </h4>
                                     <p>{isActive ? "This mandate is active and valid." : "No admin action required at this stage."}</p>
+                                </div>
+
+                                <div className="pt-4 border-t border-gray-100">
+                                    <button
+                                        onClick={handleCancel}
+                                        disabled={actionLoading}
+                                        className="w-full px-4 py-2 border border-red-200 text-red-700 bg-red-50 hover:bg-red-100 rounded-lg text-sm font-medium transition-colors flex items-center justify-center gap-2"
+                                    >
+                                        <XCircle className="w-4 h-4" />
+                                        Cancel / Terminate Mandate
+                                    </button>
                                 </div>
                             </div>
                         )}
@@ -183,39 +235,143 @@ export default function AdminMandateDetailsPage() {
                 <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4 backdrop-blur-sm">
                     <div className="bg-white rounded-2xl w-full max-w-lg p-6 shadow-2xl animate-in zoom-in duration-200">
                         <div className="flex justify-between items-center mb-4">
-                            <h3 className="text-xl font-bold">Authorized Signatory</h3>
-                            <button onClick={() => setShowSignModal(false)} className="text-gray-400 hover:text-gray-600"><XCircle className="w-5 h-5" /></button>
-                        </div>
-                        <p className="text-sm text-gray-500 mb-6">
-                            Sign below to accept this mandate on behalf of <strong>SaudaPakka</strong>.
-                        </p>
-
-                        <SignaturePad onEnd={(file) => setSignature(file)} />
-
-                        <div className="mt-4 flex items-start gap-3 p-3 bg-gray-50 rounded-lg">
-                            <input
-                                type="checkbox"
-                                id="admin_agree"
-                                checked={isAgreed}
-                                onChange={(e) => setIsAgreed(e.target.checked)}
-                                className="mt-1 w-4 h-4 text-primary-green rounded focus:ring-primary-green"
-                            />
-                            <label htmlFor="admin_agree" className="text-sm text-gray-600 cursor-pointer">
-                                I confirm that this property meets platform standards and I am adding my signature as the official representative.
-                            </label>
+                            <h3 className="text-xl font-bold">Authorized Signatory Details</h3>
+                            <button onClick={resetModal} className="text-gray-400 hover:text-gray-600"><XCircle className="w-5 h-5" /></button>
                         </div>
 
-                        <div className="flex gap-3 justify-end mt-6">
-                            <button onClick={() => setShowSignModal(false)} className="px-4 py-2 text-gray-600 font-medium hover:bg-gray-100 rounded-lg">Cancel</button>
-                            <button
-                                onClick={handleAdminSign}
-                                disabled={!signature || !isAgreed || actionLoading}
-                                className="bg-primary-green hover:bg-dark-green text-white px-6 py-2 rounded-lg font-bold disabled:opacity-50 flex items-center gap-2"
-                            >
-                                {actionLoading && <Loader2 className="animate-spin w-4 h-4" />}
-                                Sign & Validate
+                        {isSigning ? (
+                            <div className="animate-in fade-in slide-in-from-right duration-200">
+                                <div className="mb-2 flex items-center justify-between">
+                                    <div>
+                                        <h4 className="font-bold text-gray-800 text-lg">Digital Signature</h4>
+                                        <p className="text-sm text-gray-500">Sign as Platform Admin</p>
+                                    </div>
+                                    <button
+                                        onClick={() => setIsSigning(false)}
+                                        className="px-3 py-1 text-sm bg-gray-100 hover:bg-gray-200 rounded-md text-gray-600 transition-colors font-medium"
+                                    >
+                                        Back
+                                    </button>
+                                </div>
+                                <div className="mb-6">
+                                    <SignaturePad onEnd={(file: File | null) => {
+                                        setSignature(file);
+                                        setIsSigning(false);
+                                    }} />
+                                </div>
+                            </div>
+                        ) : (
+                            <>
+                                <p className="text-gray-600 text-sm mb-6 bg-blue-50 p-3 rounded-lg border border-blue-100 flex items-start gap-2">
+                                    <span className="text-blue-500 font-bold">ℹ️</span>
+                                    To accept this Platform Deal, please provide your signature and identity verification.
+                                </p>
+
+                                <div className="grid grid-cols-2 gap-4 mb-6">
+                                    {/* 1. Signature */}
+                                    {!signature ? (
+                                        <button
+                                            onClick={() => setIsSigning(true)}
+                                            className="relative py-8 border-2 border-dashed border-gray-300 bg-gray-50/50 rounded-2xl flex flex-col items-center justify-center text-gray-500 hover:border-primary-green hover:text-primary-green hover:bg-green-50/50 transition-all group overflow-hidden"
+                                        >
+                                            <div className="absolute top-3 right-3">
+                                                <span className="bg-gray-200 text-gray-600 text-[10px] uppercase font-bold px-2 py-0.5 rounded-full">Required</span>
+                                            </div>
+                                            <div className="bg-white p-4 rounded-full mb-3 shadow-sm border border-gray-100 group-hover:scale-110 transition-transform duration-200">
+                                                <FileText className="w-6 h-6" />
+                                            </div>
+                                            <span className="font-bold text-sm">Sign as Admin</span>
+                                        </button>
+                                    ) : (
+                                        <div onClick={() => setIsSigning(true)} className="relative py-8 bg-green-50 border-2 border-green-500 rounded-2xl flex flex-col items-center justify-center cursor-pointer group hover:shadow-md transition-all">
+                                            <div className="absolute top-3 right-3 bg-green-500 text-white rounded-full p-0.5">
+                                                <CheckCircle className="w-3 h-3" />
+                                            </div>
+                                            <div className="bg-white p-3 rounded-full mb-2 text-green-600 shadow-sm border border-green-100">
+                                                <FileText className="w-5 h-5" />
+                                            </div>
+                                            <p className="font-bold text-green-800 text-sm">Signature Added</p>
+                                            <span className="text-xs text-green-600 font-medium group-hover:underline mt-1">Edit / Resign</span>
+                                        </div>
+                                    )}
+
+                                    {/* 2. Selfie */}
+                                    {!selfie ? (
+                                        <button
+                                            onClick={() => setShowSelfieModal(true)}
+                                            className="relative py-8 border-2 border-dashed border-gray-300 bg-gray-50/50 rounded-2xl flex flex-col items-center justify-center text-gray-500 hover:border-primary-green hover:text-primary-green hover:bg-green-50/50 transition-all group overflow-hidden"
+                                        >
+                                            <div className="absolute top-3 right-3">
+                                                <span className="bg-gray-200 text-gray-600 text-[10px] uppercase font-bold px-2 py-0.5 rounded-full">Required</span>
+                                            </div>
+                                            <div className="bg-white p-4 rounded-full mb-3 shadow-sm border border-gray-100 group-hover:scale-110 transition-transform duration-200">
+                                                <Camera className="w-6 h-6" />
+                                            </div>
+                                            <span className="font-bold text-sm">Take Selfie</span>
+                                        </button>
+                                    ) : (
+                                        <div onClick={() => setShowSelfieModal(true)} className="relative py-8 bg-green-50 border-2 border-green-500 rounded-2xl flex flex-col items-center justify-center cursor-pointer group hover:shadow-md transition-all overflow-hidden">
+                                            <div className="absolute inset-0 z-0">
+                                                <img src={URL.createObjectURL(selfie)} className="w-full h-full object-cover opacity-10" alt="preview" />
+                                            </div>
+                                            <div className="relative z-10 bg-white p-3 rounded-full mb-2 text-green-600 shadow-sm border border-green-100">
+                                                <CheckCircle className="w-5 h-5" />
+                                            </div>
+                                            <p className="relative z-10 font-bold text-green-800 text-sm">Selfie Verified</p>
+                                            <span className="relative z-10 text-xs text-green-600 font-medium group-hover:underline mt-1">Retake</span>
+                                            <div className="absolute top-3 right-3 bg-green-500 text-white rounded-full p-0.5 z-10">
+                                                <CheckCircle className="w-3 h-3" />
+                                            </div>
+                                        </div>
+                                    )}
+                                </div>
+
+                                <div className="mt-4 flex items-start gap-3 p-4 bg-gray-50 rounded-xl border border-gray-100 mb-6">
+                                    <input
+                                        type="checkbox"
+                                        id="admin_agree"
+                                        checked={isAgreed}
+                                        onChange={(e) => setIsAgreed(e.target.checked)}
+                                        className="mt-1 w-5 h-5 text-primary-green rounded focus:ring-primary-green border-gray-300 cursor-pointer"
+                                    />
+                                    <label htmlFor="admin_agree" className="text-sm text-gray-600 cursor-pointer font-medium leading-relaxed">
+                                        I confirm that this property meets platform standards and I am adding my signature as the official representative.
+                                    </label>
+                                </div>
+
+                                <div className="flex gap-3 justify-end pt-4 border-t border-gray-100">
+                                    <button onClick={resetModal} className="px-5 py-2.5 text-gray-600 font-semibold hover:bg-gray-100 rounded-xl transition-colors">Cancel</button>
+                                    <button
+                                        onClick={handleAdminSign}
+                                        disabled={!signature || !selfie || !isAgreed || actionLoading}
+                                        className="bg-primary-green hover:bg-dark-green text-white px-8 py-2.5 rounded-xl font-bold disabled:opacity-50 disabled:cursor-not-allowed transition-all shadow-lg shadow-green-900/10 hover:shadow-green-900/20 flex items-center gap-2 transform active:scale-95"
+                                    >
+                                        {actionLoading && <Loader2 className="animate-spin w-5 h-5" />}
+                                        Sign & Validate
+                                    </button>
+                                </div>
+                            </>
+                        )}
+                    </div>
+                </div>
+            )}
+
+            {/* Selfie Modal (Separate) */}
+            {showSelfieModal && (
+                <div className="fixed inset-0 bg-black/80 z-[60] flex items-center justify-center p-4 backdrop-blur-sm transition-all">
+                    <div className="bg-white rounded-2xl w-full max-w-md p-6 shadow-2xl animate-in fade-in zoom-in duration-200">
+                        <div className="flex justify-between items-center mb-4">
+                            <h3 className="text-xl font-bold">Selfie Verification</h3>
+                            <button onClick={() => setShowSelfieModal(false)} className="p-2 bg-gray-100 rounded-full hover:bg-gray-200">
+                                <XCircle className="w-5 h-5 text-gray-500" />
                             </button>
                         </div>
+                        <SelfieCapture
+                            onCapture={(file: File) => {
+                                setSelfie(file);
+                                setShowSelfieModal(false);
+                            }}
+                        />
                     </div>
                 </div>
             )}

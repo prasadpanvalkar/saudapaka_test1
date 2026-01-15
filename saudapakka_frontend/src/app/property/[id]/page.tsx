@@ -88,7 +88,7 @@ const formatDocumentName = (key: string): string => {
 const getImageUrl = (path: string | undefined): string => {
   if (!path) return "https://placehold.co/1200x800?text=No+Image";
   if (path.startsWith('http')) return path;
-  return `${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000'}${path}`;
+  return `${(process as any).env.NEXT_PUBLIC_API_URL || 'http://localhost:8000'}${path}`;
 };
 
 // Amenities helper
@@ -592,17 +592,39 @@ export default function PropertyDetailsPage() {
                       )}
                       {/* Show disabled/status button if mandate exists? Optional, for now just hide as requested */}
 
-                      {/* Delete Button (Owner/Admin) */}
-                      {(user?.is_staff || (user && property.owner === user.id) || (user?.is_active_broker && property.has_active_mandate)) && (
-                        <Button
-                          variant="destructive"
-                          onClick={handleDelete}
-                          disabled={deleting}
-                          className="h-12 px-6 rounded-2xl bg-red-50 text-red-600 hover:bg-red-100 border border-red-100 hover:border-red-200 transition-all shadow-sm"
-                        >
-                          {deleting ? <Loader2 className="w-5 h-5 animate-spin" /> : <Trash2 className="w-5 h-5 mr-2" />}
-                          Delete Property
-                        </Button>
+                      {/* Mandate Active Indicator */}
+                      {property.has_active_mandate ? (
+                        user?.is_staff && property.active_mandate_id ? (
+                          <Link href={`/admin/mandates/${property.active_mandate_id}`}>
+                            <Button
+                              className="h-12 px-6 rounded-2xl bg-blue-50 text-blue-700 border border-blue-200 font-semibold shadow-sm hover:bg-blue-100 hover:border-blue-300 transition-all opacity-100"
+                            >
+                              <FileText className="w-5 h-5 mr-2" />
+                              View Mandate
+                            </Button>
+                          </Link>
+                        ) : (
+                          <Button
+                            disabled
+                            className="h-12 px-6 rounded-2xl bg-blue-50 text-blue-700 border border-blue-200 font-semibold shadow-sm opacity-100 cursor-default"
+                          >
+                            <FileText className="w-5 h-5 mr-2" />
+                            Mandate Active
+                          </Button>
+                        )
+                      ) : (
+                        /* Delete Button (Owner/Admin only when NO mandate) */
+                        (user?.is_staff || (user && property.owner === user.id)) && (
+                          <Button
+                            variant="destructive"
+                            onClick={handleDelete}
+                            disabled={deleting}
+                            className="h-12 px-6 rounded-2xl bg-red-50 text-red-600 hover:bg-red-100 border border-red-100 hover:border-red-200 transition-all shadow-sm"
+                          >
+                            {deleting ? <Loader2 className="w-5 h-5 animate-spin" /> : <Trash2 className="w-5 h-5 mr-2" />}
+                            Delete Property
+                          </Button>
+                        )
                       )}
                     </div>
                   </div>
@@ -802,15 +824,32 @@ export default function PropertyDetailsPage() {
                   </Button>
 
                   {/* Broker Action Mobile - Conditional */}
-                  {user?.is_active_broker && !property.has_active_mandate && (
-                    <div className="col-span-2 mt-2">
-                      <Link href={`/dashboard/mandates/create?propertyId=${id}`} className="w-full block">
-                        <Button className="w-full h-12 rounded-xl bg-[#4A9B6D] hover:bg-[#2D5F3F] text-white font-semibold shadow-sm flex items-center justify-center">
-                          <FileText className="w-5 h-5 mr-2" />
-                          Initiate Mandate
-                        </Button>
-                      </Link>
-                    </div>
+                  {property.has_active_mandate ? (
+                    user?.is_staff && property.active_mandate_id ? (
+                      <div className="col-span-2 mt-2">
+                        <Link href={`/admin/mandates/${property.active_mandate_id}`} className="w-full block">
+                          <Button className="w-full h-12 rounded-xl bg-blue-50 text-blue-700 border border-blue-200 font-semibold flex items-center justify-center">
+                            <FileText className="w-5 h-5 mr-2" />
+                            View Mandate
+                          </Button>
+                        </Link>
+                      </div>
+                    ) : (
+                      // Hide button for normal users if mandate exists (or show disabled badge if desired, but mobile space is tight)
+                      // User can see it in main body.
+                      null
+                    )
+                  ) : (
+                    user?.is_active_broker && (
+                      <div className="col-span-2 mt-2">
+                        <Link href={`/dashboard/mandates/create?propertyId=${id}`} className="w-full block">
+                          <Button className="w-full h-12 rounded-xl bg-[#4A9B6D] hover:bg-[#2D5F3F] text-white font-semibold shadow-sm flex items-center justify-center">
+                            <FileText className="w-5 h-5 mr-2" />
+                            Initiate Mandate
+                          </Button>
+                        </Link>
+                      </div>
+                    )
                   )}
                 </div>
               </div>

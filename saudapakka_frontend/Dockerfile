@@ -21,7 +21,7 @@ COPY . .
 # Set production environment variables for build
 ENV NEXT_TELEMETRY_DISABLED=1
 ENV NODE_ENV=production
-ENV NEXT_PUBLIC_API_URL=https://saudapakka.com/api
+ENV NEXT_PUBLIC_API_URL=http://localhost:8000
 
 # Build the application
 RUN npm run build

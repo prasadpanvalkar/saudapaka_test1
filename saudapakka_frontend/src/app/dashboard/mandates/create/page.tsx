@@ -8,9 +8,10 @@ import { InitiatedBy, DealType, BrokerProfile } from "@/types/mandate";
 import { parseMandateTemplate } from "@/utils/mandateTemplateParser";
 import { useAuth } from "@/hooks/use-auth";
 import BrokerSearch from "@/components/mandates/BrokerSearch";
-import MandateLetter from "@/components/mandates/MandateLetter"; // Updated component
+import MandateLetter from "@/components/mandates/MandateLetter";
 import SignaturePad from "@/components/mandates/SignaturePad";
-import { Loader2, ArrowLeft, Building2, Eye, FileText, PenTool, XCircle } from "lucide-react";
+import SelfieCapture from "@/components/ui/SelfieCapture"; // Imported
+import { Loader2, ArrowLeft, Building2, Eye, FileText, PenTool, XCircle, Camera } from "lucide-react";
 import Link from "next/link";
 
 interface SimpleProperty {
@@ -38,10 +39,13 @@ export default function InitiateMandatePage() {
     const [selectedProperty, setSelectedProperty] = useState<number | string | null>(null);
     const [dealType, setDealType] = useState<DealType>(DealType.WITH_BROKER);
     const [selectedBroker, setSelectedBroker] = useState<BrokerProfile | null>(null);
+    const [commissionRate, setCommissionRate] = useState<number>(2.0); // New State
     const [signature, setSignature] = useState<File | null>(null);
+    const [selfie, setSelfie] = useState<File | null>(null); // New State
     const [termsAccepted, setTermsAccepted] = useState(false);
     const [scrolledToBottom, setScrolledToBottom] = useState(false);
     const [showSignModal, setShowSignModal] = useState(false);
+    const [showSelfieModal, setShowSelfieModal] = useState(false); // New modal for selfie
 
     // Fetch User's Properties (Only if Seller)
     useEffect(() => {
@@ -96,8 +100,8 @@ export default function InitiateMandatePage() {
         if (!selectedProperty) return;
         if (dealType === DealType.WITH_BROKER && !selectedBroker && !user?.is_active_broker) return;
         if (!termsAccepted) return;
-        if (!signature) {
-            alert("Please sign the mandate before submitting.");
+        if (!signature || !selfie) {
+            alert("Please sign and take a selfie before submitting.");
             return;
         }
 
@@ -111,10 +115,10 @@ export default function InitiateMandatePage() {
                 deal_type: dealType,
                 broker: user?.is_active_broker ? user.id : (dealType === DealType.WITH_BROKER ? selectedBroker?.id : undefined),
                 is_exclusive: true,
-                commission_rate: 2.0
+                commission_rate: commissionRate
             };
 
-            await mandateService.initiateMandate(payload, signature);
+            await mandateService.initiateMandate(payload, signature, selfie);
             router.push('/dashboard/mandates');
         } catch (err: any) {
             console.error("Failed to initiate mandate", err);
@@ -147,7 +151,7 @@ export default function InitiateMandatePage() {
         mandate: {
             seller_name: fullPropertyDetails?.owner_details?.full_name || "Property Owner",
             broker_name: user?.is_active_broker ? user.full_name : selectedBroker?.full_name,
-            commission_rate: 2.0,
+            commission_rate: commissionRate,
             is_exclusive: true
         },
         property: fullPropertyDetails,
@@ -259,10 +263,40 @@ export default function InitiateMandatePage() {
                         </section>
                     )}
 
+                    {/* Step 3.5: Commission Rate (New) */}
+                    <section className={`bg-white p-6 rounded-xl border border-gray-200 shadow-sm transition-opacity ${!selectedProperty ? 'opacity-50 pointer-events-none' : ''}`}>
+                        <h2 className="text-lg font-bold text-gray-900 mb-4 flex items-center gap-2">
+                            <span className="bg-primary-green text-white w-6 h-6 rounded-full flex items-center justify-center text-xs">
+                                {user?.is_active_broker ? '2' : (dealType === DealType.WITH_BROKER ? '4' : '3')}
+                            </span>
+                            Commission Terms
+                        </h2>
+                        <div className="space-y-4">
+                            <div>
+                                <label className="block text-sm font-medium text-gray-700 mb-1">Commission Rate (%)</label>
+                                <div className="relative">
+                                    <input
+                                        type="number"
+                                        step="0.1"
+                                        min="0"
+                                        max="100"
+                                        value={commissionRate}
+                                        onChange={(e) => setCommissionRate(parseFloat(e.target.value) || 0)}
+                                        className="w-full p-3 border border-gray-300 rounded-lg focus:ring-primary-green focus:border-primary-green pr-10"
+                                    />
+                                    <span className="absolute right-3 top-3 text-gray-500 font-medium">%</span>
+                                </div>
+                                <p className="text-xs text-gray-500 mt-1">Standard rate is 2.0%. You can adjust this as per agreement.</p>
+                            </div>
+                        </div>
+                    </section>
+
                     {/* Step 4: Sign (Initiator) */}
                     <section className={`bg-white p-6 rounded-xl border border-gray-200 shadow-sm transition-opacity ${(!selectedProperty || (dealType === DealType.WITH_BROKER && !selectedBroker && !user?.is_active_broker)) ? 'opacity-50 pointer-events-none' : ''}`}>
                         <h2 className="text-lg font-bold text-gray-900 mb-4 flex items-center gap-2">
-                            <span className="bg-primary-green text-white w-6 h-6 rounded-full flex items-center justify-center text-xs">{user?.is_active_broker ? '2' : '4'}</span>
+                            <span className="bg-primary-green text-white w-6 h-6 rounded-full flex items-center justify-center text-xs">
+                                {user?.is_active_broker ? '3' : (dealType === DealType.WITH_BROKER ? '5' : '4')}
+                            </span>
                             Confirm & Submit
                         </h2>
 
@@ -280,38 +314,49 @@ export default function InitiateMandatePage() {
                                 </div>
                             </label>
 
-                            {/* Sign Button logic */}
-                            {!signature ? (
-                                <button
-                                    onClick={() => setShowSignModal(true)}
-                                    className="w-full py-4 border-2 border-dashed border-gray-300 rounded-xl flex flex-col items-center justify-center text-gray-500 hover:border-primary-green hover:text-primary-green hover:bg-green-50 transition-all group"
-                                >
-                                    <PenTool className="w-8 h-8 mb-2 group-hover:scale-110 transition-transform" />
-                                    <span className="font-semibold">Click to Sign Mandate</span>
-                                    <span className="text-xs mt-1">Opens signature pad</span>
-                                </button>
-                            ) : (
-                                <div className="p-4 bg-green-50 rounded-xl border border-green-200 flex items-center gap-3">
-                                    <div className="w-10 h-10 rounded-full bg-green-100 flex items-center justify-center text-green-600">
-                                        <FileText className="w-5 h-5" />
-                                    </div>
-                                    <div className="flex-1">
-                                        <p className="font-bold text-green-800 text-sm">Mandate Signed</p>
-                                        <p className="text-xs text-green-600">Ready to submit</p>
-                                    </div>
+                            <div className="grid grid-cols-2 gap-3">
+                                {/* Sign Button logic */}
+                                {!signature ? (
                                     <button
-                                        onClick={() => { setSignature(null); setShowSignModal(true); }}
-                                        className="text-xs text-gray-500 hover:text-gray-700 underline"
+                                        onClick={() => setShowSignModal(true)}
+                                        className="py-4 border-2 border-dashed border-gray-300 rounded-xl flex flex-col items-center justify-center text-gray-500 hover:border-primary-green hover:text-primary-green hover:bg-green-50 transition-all group"
                                     >
-                                        Re-sign
+                                        <PenTool className="w-8 h-8 mb-2 group-hover:scale-110 transition-transform" />
+                                        <span className="font-semibold text-sm">Sign Mandate</span>
                                     </button>
-                                </div>
-                            )}
+                                ) : (
+                                    <div className="p-4 bg-green-50 rounded-xl border border-green-200 flex flex-col items-center justify-center gap-1 cursor-pointer" onClick={() => setShowSignModal(true)}>
+                                        <div className="w-8 h-8 rounded-full bg-green-100 flex items-center justify-center text-green-600 mb-1">
+                                            <FileText className="w-4 h-4" />
+                                        </div>
+                                        <p className="font-bold text-green-800 text-sm">Signed</p>
+                                    </div>
+                                )}
+
+                                {/* Selfie Button Logic */}
+                                {!selfie ? (
+                                    <button
+                                        onClick={() => setShowSelfieModal(true)}
+                                        className="py-4 border-2 border-dashed border-gray-300 rounded-xl flex flex-col items-center justify-center text-gray-500 hover:border-primary-green hover:text-primary-green hover:bg-green-50 transition-all group"
+                                    >
+                                        <Camera className="w-8 h-8 mb-2 group-hover:scale-110 transition-transform" />
+                                        <span className="font-semibold text-sm">Take Selfie</span>
+                                    </button>
+                                ) : (
+                                    <div className="p-4 bg-green-50 rounded-xl border border-green-200 flex flex-col items-center justify-center gap-1 cursor-pointer relative overflow-hidden group" onClick={() => setShowSelfieModal(true)}>
+                                        <img src={URL.createObjectURL(selfie)} className="absolute inset-0 w-full h-full object-cover opacity-80 group-hover:opacity-60 transition-opacity" />
+                                        <div className=" z-10 w-8 h-8 rounded-full bg-green-100 flex items-center justify-center text-green-600 mb-1">
+                                            <Camera className="w-4 h-4" />
+                                        </div>
+                                        <p className="z-10 font-bold text-green-800 text-sm drop-shadow-sm">Captured</p>
+                                    </div>
+                                )}
+                            </div>
                         </div>
 
                         <button
                             onClick={handleSubmit}
-                            disabled={submitting || !selectedProperty || !termsAccepted || (dealType === DealType.WITH_BROKER && !selectedBroker && !user?.is_active_broker) || !signature}
+                            disabled={submitting || !selectedProperty || !termsAccepted || (dealType === DealType.WITH_BROKER && !selectedBroker && !user?.is_active_broker) || !signature || !selfie}
                             className="w-full mt-6 bg-primary-green hover:bg-dark-green text-white px-6 py-3 rounded-xl font-bold text-lg disabled:opacity-50 disabled:cursor-not-allowed transition-all shadow-lg shadow-green-900/10 flex items-center justify-center gap-2"
                         >
                             {submitting ? <Loader2 className="animate-spin" /> : "Initiate Mandate Request"}
@@ -340,14 +385,17 @@ export default function InitiateMandatePage() {
                                         property={fullPropertyDetails}
                                         mandate={{
                                             is_exclusive: true,
-                                            commission_rate: 2.0,
-                                            broker_name: user?.is_active_broker ? user.full_name : selectedBroker?.full_name
+                                            commission_rate: commissionRate,
+                                            broker_name: user?.is_active_broker ? user.full_name : selectedBroker?.full_name,
+                                            // Show selfie if captured
+                                            seller_selfie: !isBrokerInitiator && selfie ? URL.createObjectURL(selfie) : undefined,
+                                            broker_selfie: isBrokerInitiator && selfie ? URL.createObjectURL(selfie) : undefined
                                         }}
                                         activeSigner={activeSigner}
                                         isSigned={false}
                                         ownerSignatureUrl={!isBrokerInitiator && signature ? URL.createObjectURL(signature) : undefined}
                                         signatureUrl={isBrokerInitiator && signature ? URL.createObjectURL(signature) : undefined}
-                                        onSign={setSignature}
+                                        onSign={(file) => setSignature(file)}
                                     />
                                 </div>
                             </div>
@@ -391,6 +439,28 @@ export default function InitiateMandatePage() {
                                 Confirm Signature
                             </button>
                         </div>
+                    </div>
+                </div>
+            )}
+
+            {/* Selfie Modal */}
+            {showSelfieModal && (
+                <div className="fixed inset-0 bg-black/80 z-50 flex items-center justify-center p-4 backdrop-blur-sm transition-all">
+                    <div className="bg-white rounded-2xl w-full max-w-md p-6 shadow-2xl animate-in fade-in zoom-in duration-200">
+                        <div className="flex justify-between items-center mb-4">
+                            <h3 className="text-xl font-bold">Selfie Verification</h3>
+                            <button onClick={() => setShowSelfieModal(false)} className="p-2 bg-gray-100 rounded-full hover:bg-gray-200">
+                                <XCircle className="w-5 h-5 text-gray-500" />
+                            </button>
+                        </div>
+                        <p className="text-gray-500 text-sm mb-4">Please take a clear selfie for identity verification.</p>
+
+                        <SelfieCapture
+                            onCapture={(file) => {
+                                setSelfie(file);
+                                setShowSelfieModal(false);
+                            }}
+                        />
                     </div>
                 </div>
             )}

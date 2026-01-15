@@ -21,11 +21,9 @@ export default function NotificationBell() {
         }
     };
 
-    // Initial fetch and polling
+    // Initial fetch only (no polling)
     useEffect(() => {
         fetchNotifications();
-        const interval = setInterval(fetchNotifications, 30000); // Poll every 30s
-        return () => clearInterval(interval);
     }, []);
 
     // Close dropdown when clicking outside

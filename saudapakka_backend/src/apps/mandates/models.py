@@ -47,10 +47,16 @@ class Mandate(models.Model):
     seller_signature = models.ImageField(upload_to='signatures/sellers/', null=True, blank=True)
     broker_signature = models.ImageField(upload_to='signatures/brokers/', null=True, blank=True)
     
+    # Selfie Verification
+    seller_selfie = models.ImageField(upload_to='selfies/sellers/', null=True, blank=True)
+    broker_selfie = models.ImageField(upload_to='selfies/brokers/', null=True, blank=True)
+    
     # New fields for mandate upgrade
     rejection_reason = models.TextField(null=True, blank=True)
     renewed_from = models.ForeignKey('self', null=True, blank=True, on_delete=models.SET_NULL, related_name='renewals')
     is_near_expiry_notified = models.BooleanField(default=False)
+    
+    mandate_number = models.CharField(max_length=20, blank=True, null=True, unique=True)
     
     @property
     def is_expired(self):
@@ -65,6 +71,33 @@ class Mandate(models.Model):
             return max(0, delta.days)
         return 0
 
+    def generate_mandate_number(self):
+        # Format: DDMMYY(Init2)x(Accept2)
+        # Example: 140126QAxSB
+        
+        # 1. Date (Created At or Now)
+        date_str = (self.created_at or timezone.now()).strftime('%d%m%y')
+        
+        # 2. Initiator
+        initiator_name = "XX"
+        acceptor_name = "XX"
+        
+        if self.initiated_by == 'SELLER' and self.seller:
+            initiator_name = (self.seller.first_name or self.seller.email or "SE")[:2].upper()
+            if self.broker:
+                acceptor_name = (self.broker.first_name or self.broker.email or "BR")[:2].upper()
+            else:
+                acceptor_name = "PE" # Pending
+                
+        elif self.initiated_by == 'BROKER' and self.broker:
+            initiator_name = (self.broker.first_name or self.broker.email or "BR")[:2].upper()
+            if self.seller:
+                acceptor_name = (self.seller.first_name or self.seller.email or "SE")[:2].upper()
+            else:
+                acceptor_name = "PE"
+        
+        return f"{date_str}{initiator_name}x{acceptor_name}"
+
     def save(self, *args, **kwargs):
         if self.status == 'ACTIVE' and not self.signed_at:
             self.signed_at = timezone.now()
@@ -74,8 +107,15 @@ class Mandate(models.Model):
         if self.status == 'ACTIVE' and self.start_date and not self.end_date:
             self.end_date = self.start_date + timedelta(days=90)
             
+        # Generate Mandate Number
+        new_number = self.generate_mandate_number()
+        # Only update if it changed or if it's new, but careful about uniqueness?
+        # The user wants it to reflect the names, so it SHOULD update if names/acceptor change.
+        # But ID usually shouldn't change. However, for "Pending" -> "Accepted", it makes sense to update "PE" to "SB".
+        self.mandate_number = new_number
+            
         super().save(*args, **kwargs)
 
     def __str__(self):
         # Updated to use property_item
-        return f"Mandate: {self.property_item.title if self.property_item else 'N/A'} - {self.status}"
+        return f"Mandate: {self.mandate_number or self.id} - {self.status}"

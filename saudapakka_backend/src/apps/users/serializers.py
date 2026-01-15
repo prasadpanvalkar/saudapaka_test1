@@ -4,6 +4,15 @@ from .models import KYCVerification, BrokerProfile
 
 User = get_user_model()
 
+class BrokerProfileSerializer(serializers.ModelSerializer):
+    """
+    Serializer for the detailed Broker information.
+    """
+    class Meta:
+        model = BrokerProfile
+        fields = ['services_offered', 'experience_years', 'is_verified']
+        read_only_fields = ['is_verified']
+
 class UserSerializer(serializers.ModelSerializer):
     """
     Standard User Serializer for Profile display and searching.
@@ -11,6 +20,7 @@ class UserSerializer(serializers.ModelSerializer):
     """
     full_name = serializers.ReadOnlyField()
     kyc_status = serializers.SerializerMethodField()
+    broker_profile = BrokerProfileSerializer(read_only=True)
 
     class Meta:
         model = User
@@ -23,16 +33,53 @@ class UserSerializer(serializers.ModelSerializer):
             'phone_number', 
             'is_active_seller', 
             'is_active_broker',
+            'role_category',
             'kyc_status',
-            'is_staff'
+            'is_kyc_verified',
+            'is_staff',
+            'broker_profile'
         ]
-        read_only_fields = ['id', 'email', 'full_name', 'kyc_status', 'is_staff']
+        read_only_fields = ['id', 'email', 'full_name', 'kyc_status', 'is_kyc_verified', 'is_staff', 'broker_profile']
 
     def get_kyc_status(self, obj):
         try:
             return obj.kyc_data.status
         except KYCVerification.DoesNotExist:
             return "NOT_STARTED"
+
+    def update(self, instance, validated_data):
+        """
+        Overridden to automatically set active flags based on role_category.
+        """
+        role_category = validated_data.get('role_category', instance.role_category)
+        
+        # Update instance with standard fields
+        instance = super().update(instance, validated_data)
+        
+        # Logic: Sync flags with Category
+        if role_category in ['SELLER', 'BUILDER', 'PLOTTING_AGENCY']:
+            instance.is_active_seller = True
+            # We keep is_active_broker as is, or False? 
+            # Ideally mutually exclusive unless stated otherwise.
+            # For now, let's enforce exclusivity for clarity unless they are already both.
+            instance.is_active_broker = False 
+            
+        elif role_category == 'BROKER':
+            instance.is_active_broker = True
+            instance.is_active_seller = False
+            
+            # Create BrokerProfile if needed
+            if not BrokerProfile.objects.filter(user=instance).exists():
+                BrokerProfile.objects.create(user=instance)
+
+        elif role_category == 'BUYER':
+            # Buyer has neither by default, or maybe just keeps existing?
+            # Safe default: neither is active for pure buyer.
+            instance.is_active_seller = False
+            instance.is_active_broker = False
+            
+        instance.save()
+        return instance
 
 class PublicUserSerializer(serializers.ModelSerializer):
     """
@@ -62,15 +109,6 @@ class KYCVerificationSerializer(serializers.ModelSerializer):
         model = KYCVerification
         fields = ['status', 'full_name', 'dob', 'verified_at']
         read_only_fields = ['status', 'verified_at']
-
-class BrokerProfileSerializer(serializers.ModelSerializer):
-    """
-    Serializer for the detailed Broker information.
-    """
-    class Meta:
-        model = BrokerProfile
-        fields = ['services_offered', 'experience_years', 'is_verified']
-        read_only_fields = ['is_verified']
 
 class UserRegistrationSerializer(serializers.ModelSerializer):
     """

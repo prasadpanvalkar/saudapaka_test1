@@ -1,4 +1,4 @@
-from rest_framework import viewsets, permissions, status, filters
+from rest_framework import viewsets, permissions, status, filters, exceptions
 from rest_framework.decorators import action
 from rest_framework.response import Response
 from rest_framework.parsers import MultiPartParser, FormParser
@@ -65,13 +65,36 @@ class PropertyViewSet(viewsets.ModelViewSet):
             
         return base_query.filter(verification_status='VERIFIED').order_by('-created_at')
 
+    def _check_kyc_required(self, user):
+        """
+        Optimized KYC check using cached field - NO database queries!
+        Returns True if KYC is required and not verified.
+        """
+        # Admin bypass
+        if user.is_staff:
+            return False
+        
+        # Only these roles need KYC
+        kyc_required_roles = ['SELLER', 'BROKER', 'BUILDER', 'PLOTTING_AGENCY']
+        if user.role_category not in kyc_required_roles:
+            return False
+        
+        # Check cached KYC status (no DB query!)
+        return not user.is_kyc_verified
+    
     def perform_create(self, serializer):
         user = self.request.user
         
-        # Check User Authorization (Staff users bypass this check)
+        # KYC Verification Check
+        if self._check_kyc_required(user):
+            raise exceptions.PermissionDenied(
+                "KYC verification required. Please complete KYC or contact support."
+            )
+        
+        # Check User Authorization
         if not user.is_staff and not (user.is_active_seller or user.is_active_broker):
             raise permissions.PermissionDenied(
-                "Access Denied: You must complete KYC to list properties."
+                "Access Denied: You must be a seller or broker to list properties."
             )
         
         # Save with owner and initial pending status

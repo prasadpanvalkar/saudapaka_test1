@@ -205,9 +205,10 @@ class VerifyKYCStatusView(APIView):
             kyc.status = 'VERIFIED'
             kyc.save()
             
-            # Update User profile
+            # Update User profile AND cached KYC status
             user = request.user
             user.first_name = kyc.full_name.split(' ')[0]
+            user.is_kyc_verified = True  # Cache KYC status for performance
             user.save()
 
             logger.info(f"KYC verification successful for {user.email}")
@@ -237,9 +238,19 @@ class UpgradeRoleView(APIView):
 
         # 2. Upgrade the role
         if role == 'SELLER':
+            user.role_category = 'SELLER'
             user.is_active_seller = True
-            user.is_active_broker = False # Mutually exclusive for now
+            user.is_active_broker = False 
+        elif role == 'BUILDER':
+            user.role_category = 'BUILDER'
+            user.is_active_seller = True # builders act as sellers
+            user.is_active_broker = False 
+        elif role == 'PLOTTING_AGENCY':
+            user.role_category = 'PLOTTING_AGENCY'
+            user.is_active_seller = True # agencies act as sellers
+            user.is_active_broker = False 
         elif role == 'BROKER':
+            user.role_category = 'BROKER'
             user.is_active_broker = True
             user.is_active_seller = False
             # Create a broker profile if it doesn't exist
@@ -333,13 +344,14 @@ class AdminVerifyUserView(APIView):
                 kyc.verified_at = timezone.now()
                 kyc.save()
                 
-                # Auto-update user profile if verified
+                # Auto-update user profile AND cached KYC status
                 name_parts = kyc.full_name.split(' ') if kyc.full_name else []
                 if name_parts:
                     target_user.first_name = name_parts[0]
                     if len(name_parts) > 1:
                         target_user.last_name = name_parts[-1]
-                    target_user.save()
+                target_user.is_kyc_verified = True  # Cache KYC status for performance
+                target_user.save()
 
                 return Response({"message": f"User {target_user.email} marked as VERIFIED."})
             

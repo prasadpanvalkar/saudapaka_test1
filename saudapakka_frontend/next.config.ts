@@ -1,8 +1,8 @@
 import type { NextConfig } from "next";
 
 const nextConfig: NextConfig = {
-  // Production: Enable standalone output for Docker
-  output: 'standalone',
+  // Production: Enable standalone output for Docker (ONLY in production!)
+  ...(process.env.NODE_ENV === 'production' ? { output: 'standalone' } : {}),
 
   // Production environment variables
   env: {

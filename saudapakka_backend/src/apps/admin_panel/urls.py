@@ -7,6 +7,7 @@ from .views import (
     AdminUserList,
     AdminUserAction,
     AdminUserDetail,
+    AdminUserKYCVerify,
 )
 
 urlpatterns = [
@@ -21,6 +22,7 @@ urlpatterns = [
     path('users/', AdminUserList.as_view(), name='admin-user-list'),
     path('users/<uuid:pk>/', AdminUserDetail.as_view(), name='admin-user-detail'),
     path('users/<uuid:pk>/action/', AdminUserAction.as_view(), name='admin-user-action'),
+    path('users/<uuid:pk>/verify-kyc/', AdminUserKYCVerify.as_view(), name='admin-user-kyc-verify'),
 
     # View Single Property (Details + Docs)
     path('properties/<uuid:pk>/', AdminPropertyDetail.as_view(), name='admin-prop-detail'),

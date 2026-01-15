@@ -21,7 +21,9 @@ api.interceptors.request.use((config) => {
       config.url?.includes(endpoint)
     );
 
-    if (!isPublicEndpoint) {
+    if (isPublicEndpoint) {
+      delete config.headers.Authorization;
+    } else {
       const token = Cookies.get('access_token');
       if (token) {
         config.headers.Authorization = `Bearer ${token}`;
