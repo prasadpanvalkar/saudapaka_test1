@@ -29,6 +29,8 @@ services:
     environment:
       - NODE_ENV=development
       - NEXT_PUBLIC_API_URL=http://localhost:8000
+      - CHOKIDAR_USEPOLLING=true
+      - WATCHPACK_POLLING=true
     ports:
       - "3000:3000"
     stdin_open: true # Add stdin_open and tty for interactive mode if needed, helps with keeping container alive

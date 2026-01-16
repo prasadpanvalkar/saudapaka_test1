@@ -60,7 +60,7 @@ export default function KYCCallbackPage() {
         verifyStatus();
     }, []);
 
-    const handleRoleSelection = async (role: "SELLER" | "BROKER") => {
+    const handleRoleSelection = async (role: "SELLER" | "BROKER" | "BUILDER" | "PLOTTING_AGENCY") => {
         setLoadingRole(true);
         try {
             // Step 2: Request role upgrade from Django
@@ -140,6 +140,30 @@ export default function KYCCallbackPage() {
                                 <h3 className="font-bold text-gray-900 mb-1">I am an Owner</h3>
                                 <p className="text-xs text-gray-500">Directly list and manage my own properties.</p>
                                 {loadingRole && <Loader2 className="absolute top-4 right-4 w-4 h-4 animate-spin text-emerald-600" />}
+                            </button>
+
+                            <button
+                                onClick={() => handleRoleSelection("BUILDER")}
+                                disabled={loadingRole}
+                                className="p-6 border rounded-2xl hover:border-orange-500 hover:bg-orange-50/50 transition-all group relative overflow-hidden disabled:opacity-50"
+                            >
+                                <div className="w-10 h-10 bg-gray-100 rounded-full flex items-center justify-center mb-4 group-hover:bg-orange-600 group-hover:text-white transition-colors">
+                                    <Store className="w-5 h-5" />
+                                </div>
+                                <h3 className="font-bold text-gray-900 mb-1">I am a Builder</h3>
+                                <p className="text-xs text-gray-500">List and manage construction projects.</p>
+                            </button>
+
+                            <button
+                                onClick={() => handleRoleSelection("PLOTTING_AGENCY")}
+                                disabled={loadingRole}
+                                className="p-6 border rounded-2xl hover:border-purple-500 hover:bg-purple-50/50 transition-all group relative overflow-hidden disabled:opacity-50"
+                            >
+                                <div className="w-10 h-10 bg-gray-100 rounded-full flex items-center justify-center mb-4 group-hover:bg-purple-600 group-hover:text-white transition-colors">
+                                    <Store className="w-5 h-5" />
+                                </div>
+                                <h3 className="font-bold text-gray-900 mb-1">Plotting Agency</h3>
+                                <p className="text-xs text-gray-500">Manage land and plotting developments.</p>
                             </button>
 
                             <button

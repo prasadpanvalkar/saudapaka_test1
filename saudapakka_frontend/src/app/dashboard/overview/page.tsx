@@ -234,6 +234,17 @@ function AdminDashboard({ user }: { user: any }) {
   );
 }
 
+// --- WRAPPER COMPONENT: BUILDER DASHBOARD ---
+// Currently re-uses Seller dashboard but allows for future divergence
+function BuilderDashboard({ user }: { user: any }) {
+  return <SellerDashboard user={user} />;
+}
+
+// --- WRAPPER COMPONENT: PLOTTING AGENCY DASHBOARD ---
+function PlottingAgencyDashboard({ user }: { user: any }) {
+  return <SellerDashboard user={user} />;
+}
+
 // --- MAIN PAGE ---
 export default function OverviewPage() {
   const router = useRouter();
@@ -261,6 +272,27 @@ export default function OverviewPage() {
 
   const isSellerOrBroker = user.is_active_seller || user.is_active_broker;
 
+  // --- ROLE-BASED RENDERING LOGIC ---
+  const renderDashboard = () => {
+    if (user.is_staff) return <AdminDashboard user={user} />;
+
+    // Builder, Plotting Agency, and Seller all use the same dashboard
+    // (they all list properties, just with different role labels)
+    if (user.role_category === 'BUILDER' ||
+      user.role_category === 'PLOTTING_AGENCY' ||
+      user.is_active_seller) {
+      return <SellerDashboard user={user} />;
+    }
+
+    // Broker has their own dashboard
+    if (user.is_active_broker) {
+      return <SellerDashboard user={user} />; // For now, brokers also use seller dashboard
+    }
+
+    // Default to Buyer
+    return <BuyerDashboard user={user} />;
+  };
+
   return (
     <div className="max-w-6xl mx-auto space-y-8">
       {/* Header */}
@@ -271,19 +303,21 @@ export default function OverviewPage() {
           </h1>
           <p className="text-gray-500 mt-2">Here is what is happening with your account today.</p>
         </div>
-        <div className="text-sm text-gray-400 bg-gray-50 px-4 py-2 rounded-full border border-gray-100">
-          {currentDate}
+        <div className="flex gap-3 items-center">
+          {/* Role Chip */}
+          <div className="text-sm font-bold px-4 py-2 rounded-full border border-gray-100 uppercase tracking-wider
+                bg-blue-50 text-blue-700">
+            {user.role_category?.replace('_', ' ') || (user.is_active_broker ? 'BROKER' : user.is_active_seller ? 'SELLER' : 'BUYER')}
+          </div>
+
+          <div className="text-sm text-gray-400 bg-gray-50 px-4 py-2 rounded-full border border-gray-100">
+            {currentDate}
+          </div>
         </div>
       </div>
 
       {/* Conditional Dashboard */}
-      {user.is_staff ? (
-        <AdminDashboard user={user} />
-      ) : isSellerOrBroker ? (
-        <SellerDashboard user={user} />
-      ) : (
-        <BuyerDashboard user={user} />
-      )}
+      {renderDashboard()}
     </div>
   );
 }

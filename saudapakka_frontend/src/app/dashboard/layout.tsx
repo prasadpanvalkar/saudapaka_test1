@@ -62,6 +62,19 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
 
   const getUserRole = () => {
     if (user?.is_staff) return { label: "Administrator", color: "bg-red-600" };
+
+    // Explicit Role Checks (Forces correct label even if is_active_seller is true)
+    if (user?.role_category === 'BUILDER') return { label: "Builder", color: "bg-orange-500" }; // Using distinct Orange for Builder
+    if (user?.role_category === 'PLOTTING_AGENCY') return { label: "Plotting Agency", color: "bg-indigo-500" }; // Distinct Indigo
+
+    // Prioritize specific category if available
+    if (user?.role_category) {
+      // Use existing colors based on underlying role
+      const color = user.is_active_broker ? "bg-blue-500" :
+        user.is_active_seller ? "bg-purple-500" : "bg-accent-green";
+      return { label: user.role_category.replace('_', ' '), color };
+    }
+
     if (user?.is_active_broker) return { label: "Broker", color: "bg-blue-500" };
     if (user?.is_active_seller) return { label: "Seller", color: "bg-purple-500" };
     return { label: "Consumer", color: "bg-accent-green" };
@@ -87,17 +100,44 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
 
   const userRole = getUserRole();
 
-  const navigation = [
+  // --- NAVIGATION CONFIG ---
+  // Base items common to multiple roles
+  const BASE_SELLER_NAV = [
     { name: "Overview", href: "/dashboard/overview", icon: LayoutDashboard },
-    ...(user?.is_active_seller || user?.is_active_broker
-      ? [
-        { name: "My Listings", href: "/dashboard/my-listings", icon: Building2 },
-        { name: "Manage Mandate", href: "/dashboard/mandates", icon: Gavel }
-      ]
-      : [{ name: "Saved Properties", href: "/dashboard/saved", icon: Heart }]),
-    { name: "Identity Verification", href: "/dashboard/kyc", icon: ShieldCheck },
-    // { name: "My Profile", href: "/dashboard/profile", icon: UserCircle },
+    { name: "My Listings", href: "/dashboard/my-listings", icon: Building2 },
+    { name: "Manage Mandate", href: "/dashboard/mandates", icon: Gavel }
   ];
+
+  const BUYER_NAV = [
+    { name: "Overview", href: "/dashboard/overview", icon: LayoutDashboard },
+    { name: "Saved Properties", href: "/dashboard/saved", icon: Heart }
+  ];
+
+  const COMMON_NAV = [
+    { name: "My Profile", href: "/dashboard/profile", icon: UserCircle },
+    { name: "Identity Verification", href: "/dashboard/kyc", icon: ShieldCheck },
+  ];
+
+  // Logic to select specific navigation stack
+  let activeNav = BUYER_NAV;
+
+  if (user?.is_active_broker || user?.is_active_seller) {
+    // CURRENT STATE: All "Seller-types" share the same nav structure, 
+    // but we define them here to allow future modification easily.
+
+    if (user?.role_category === 'BUILDER') {
+      // Future: Add Builder-specific items here
+      activeNav = BASE_SELLER_NAV;
+    } else if (user?.role_category === 'PLOTTING_AGENCY') {
+      // Future: Add Plotting-specific items here
+      activeNav = BASE_SELLER_NAV;
+    } else {
+      // Standard Seller/Broker
+      activeNav = BASE_SELLER_NAV;
+    }
+  }
+
+  const navigation = [...activeNav, ...COMMON_NAV];
 
   return (
     <div className="flex min-h-screen bg-gray-50">

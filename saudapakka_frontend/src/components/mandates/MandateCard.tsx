@@ -50,7 +50,7 @@ const MandateCard: React.FC<MandateCardProps> = ({ mandate }) => {
                 </div>
 
                 <h3 className="font-bold text-gray-900 mb-1 line-clamp-1">{mandate.property_title || `Property #${mandate.property_item}`}</h3>
-                <p className="text-xs text-gray-500 mb-4">Mandate ID: #{mandate.id}</p>
+                <p className="text-xs text-gray-500 mb-4">Mandate ID: #{mandate.mandate_number || mandate.id}</p>
 
                 <div className="space-y-2 text-sm text-gray-600 mb-6">
                     {mandate.deal_type === 'WITH_BROKER' && (

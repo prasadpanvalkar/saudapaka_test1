@@ -5,7 +5,7 @@ import { mandateService } from "@/services/mandateService";
 import { Mandate, MandateStatus } from "@/types/mandate";
 import MandateCard from "@/components/mandates/MandateCard";
 import Link from "next/link";
-import { Plus, Filter, FileText } from "lucide-react";
+import { Plus, Filter, FileText, Search } from "lucide-react";
 import { useAuth } from "@/hooks/use-auth";
 
 export default function MandatesDashboard() {

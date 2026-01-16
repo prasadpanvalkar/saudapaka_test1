@@ -14,6 +14,18 @@ class User(AbstractUser):
     # Roles
     is_active_seller = models.BooleanField(default=False)
     is_active_broker = models.BooleanField(default=False)
+    
+    # KYC Status (cached for performance - updated when KYC is verified)
+    is_kyc_verified = models.BooleanField(default=False)
+    
+    ROLE_CHOICES = [
+        ('BUYER', 'Buyer'),
+        ('SELLER', 'Seller'),
+        ('BUILDER', 'Builder'),
+        ('BROKER', 'Real Estate Agent'),
+        ('PLOTTING_AGENCY', 'Plotting Company/Agency'),
+    ]
+    role_category = models.CharField(max_length=20, choices=ROLE_CHOICES, default='BUYER')
      
     # OTP Fields
     otp = models.CharField(max_length=6, blank=True, null=True)

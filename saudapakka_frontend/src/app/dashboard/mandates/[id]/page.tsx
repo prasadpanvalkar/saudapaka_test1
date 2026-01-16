@@ -8,9 +8,11 @@ import { Mandate, MandateStatus } from "@/types/mandate";
 import { parseMandateTemplate } from "@/utils/mandateTemplateParser";
 import MandateLetter from "@/components/mandates/MandateLetter";
 import SignaturePad from "@/components/mandates/SignaturePad";
-import { Loader2, AlertTriangle, CheckCircle, XCircle, Clock, ArrowLeft, RefreshCw, FileText } from "lucide-react";
+import SelfieCapture from "@/components/ui/SelfieCapture";
+import { Loader2, AlertTriangle, CheckCircle, XCircle, Clock, ArrowLeft, RefreshCw, FileText, Camera, Download } from "lucide-react";
 import Link from "next/link";
 import { useAuth } from "@/hooks/use-auth";
+import { downloadMandatePDF } from "@/utils/mandateDownload";
 
 export default function MandateDetailsPage() {
     const params = useParams();
@@ -26,8 +28,11 @@ export default function MandateDetailsPage() {
     // Action States
     const [showSignModal, setShowSignModal] = useState(false);
     const [showRejectModal, setShowRejectModal] = useState(false);
+    const [showSelfieModal, setShowSelfieModal] = useState(false);
     const [rejectReason, setRejectReason] = useState("");
     const [signature, setSignature] = useState<File | null>(null);
+    const [selfie, setSelfie] = useState<File | null>(null);
+    const [isSigning, setIsSigning] = useState(false); // New state for manual toggle
     const [isAgreed, setIsAgreed] = useState(false);
     const [scrolledToBottom, setScrolledToBottom] = useState(false);
 
@@ -77,11 +82,11 @@ export default function MandateDetailsPage() {
         }
     };
 
-    const handeAccept = async () => {
-        if (!signature || !mandate) return;
+    const handleAccept = async () => {
+        if (!signature || !mandate || !selfie) return;
         setActionLoading(true);
         try {
-            await mandateService.acceptAndSign(mandate.id, signature);
+            await mandateService.acceptAndSign(mandate.id, signature, selfie);
             setShowSignModal(false);
             fetchMandate(); // Refresh to see Active status
             alert("Mandate Activated Successfully!");
@@ -142,27 +147,32 @@ export default function MandateDetailsPage() {
 
     const isTerminatedByUser = mandate.status === 'TERMINATED_BY_USER';
 
-    const handleCancel = async () => {
-        if (!mandate) return;
-        if (!confirm("Are you sure you want to cancel this mandate? This action cannot be undone.")) return;
 
-        setActionLoading(true);
-        try {
-            await mandateService.cancelMandate(mandate.id);
-            alert("Mandate cancelled successfully.");
-            fetchMandate();
-        } catch (err) {
-            console.error("Failed to cancel", err);
-            alert("Failed to cancel mandate.");
-        } finally {
-            setActionLoading(false);
-        }
-    };
 
     const templateContent = parseMandateTemplate({
         mandate,
         property: propertyDetails,
     });
+
+    // --- Helper Logic for UI ---
+    const myId = user?.id;
+    const amIInitiator = mandate.initiated_by === 'SELLER'
+        ? (String(mandate.seller) === String(myId))
+        : (String(mandate.broker) === String(myId));
+
+    let activeSigner: 'SELLER' | 'BROKER' | undefined = undefined;
+    if (user) {
+        if (String(user.id) === String(mandate.seller)) activeSigner = 'SELLER';
+        else if (String(user.id) === String(mandate.broker)) activeSigner = 'BROKER';
+        else if (user.is_superuser && mandate.deal_type === 'WITH_PLATFORM') activeSigner = 'BROKER';
+    }
+
+    // Can action if Pending AND I am involved AND I am NOT the one who started it
+    const canAction = isPending && !amIInitiator && !!activeSigner;
+
+    // Am I involved in this mandate? (either as seller or broker)
+    const amIInvolved = activeSigner !== undefined;
+
 
     return (
         <div className="max-w-7xl mx-auto pb-20 relative">
@@ -178,7 +188,7 @@ export default function MandateDetailsPage() {
                     <div className="flex-1 min-w-0">
                         <div className="flex flex-wrap items-center gap-3 mb-2">
                             <h1 className="text-xl sm:text-2xl font-bold text-gray-900 truncate">
-                                Mandate #{mandate.id.toString().slice(0, 8)}
+                                Mandate #{mandate.mandate_number || mandate.id.toString().slice(0, 8)}
                             </h1>
                             {isExpiringSoon && (
                                 <span className="inline-flex items-center gap-1.5 px-2.5 py-1 bg-yellow-50 text-yellow-700 rounded-lg text-xs font-semibold border border-yellow-100">
@@ -219,6 +229,16 @@ export default function MandateDetailsPage() {
 
                 {/* Actions Container */}
                 <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-3 w-full lg:w-auto">
+                    {/* Download Button for ACTIVE mandates (anyone involved or admin) */}
+                    {isActive && (amIInvolved || (user?.is_staff ?? false)) && (
+                        <button
+                            onClick={() => downloadMandatePDF(mandate, propertyDetails || mandate.property_details, user || undefined)}
+                            className="flex items-center justify-center gap-2 bg-blue-600 hover:bg-blue-700 text-white px-5 py-2.5 rounded-xl font-semibold transition-all shadow-sm hover:shadow"
+                        >
+                            <Download className="w-4 h-4" />
+                            Download PDF
+                        </button>
+                    )}
                     {isExpired && (
                         <button
                             onClick={handleRenew}
@@ -227,17 +247,6 @@ export default function MandateDetailsPage() {
                         >
                             {actionLoading ? <Loader2 className="animate-spin w-4 h-4" /> : <RefreshCw className="w-4 h-4" />}
                             Renew Mandate
-                        </button>
-                    )}
-
-                    {(isActive || isPending) && (
-                        <button
-                            onClick={handleCancel}
-                            disabled={actionLoading}
-                            className="flex items-center justify-center gap-2 px-5 py-2.5 bg-white border border-red-200 text-red-600 hover:bg-red-50 rounded-xl font-semibold transition-colors shadow-sm"
-                        >
-                            <XCircle className="w-4 h-4" />
-                            Cancel Mandate
                         </button>
                     )}
                 </div>
@@ -259,166 +268,228 @@ export default function MandateDetailsPage() {
                             )}
                         </div>
                         <div className="p-6 bg-gray-100/50">
-                            {propertyDetails ? (
-                                <MandateLetter
-                                    dealType={mandate.deal_type}
-                                    property={propertyDetails}
-                                    mandate={mandate}
-                                    onSign={(file) => setSignature(file)}
-                                    user={user || undefined}
-                                    isSigned={mandate.status === 'ACTIVE' || !!mandate.broker_signature}
-                                    signatureUrl={typeof mandate.broker_signature === 'string' ? mandate.broker_signature : undefined}
-                                    ownerSignatureUrl={typeof mandate.seller_signature === 'string' ? mandate.seller_signature : undefined}
-                                />
-                            ) : (
-                                <div className="flex justify-center py-12 text-gray-400">
-                                    <Loader2 className="animate-spin mb-2" />
-                                    <span className="ml-2">Loading document details...</span>
-                                </div>
-                            )}
-                            <div ref={scrollRef} className="h-1" />
+                            <div>
+                                <h1 className="text-2xl font-bold text-gray-900 flex items-center gap-2">
+                                    Mandate #{mandate.mandate_number || mandate.id}
+                                    <span className={`px-2 py-1 rounded-full text-xs font-bold ${mandate.status === 'ACTIVE' ? 'bg-green-100 text-green-700' :
+                                        mandate.status === 'PENDING' ? 'bg-yellow-100 text-yellow-700' :
+                                            'bg-red-100 text-red-700'
+                                        }`}>
+                                        {mandate.status}
+                                    </span>
+                                </h1>
+                                <p className="text-gray-500 text-sm">Created on {new Date(mandate.created_at).toLocaleDateString()}</p>
+                            </div>
                         </div>
-                    </div>
-                </div>
 
-                <div className="lg:col-span-4 space-y-6">
-                    {/* Actions Card */}
-                    {isPending && (
-                        <div className="bg-white p-6 rounded-xl border border-gray-200 shadow-sm sticky top-8">
-                            <h3 className="font-bold text-gray-900 mb-4">Actions Required</h3>
-                            <p className="text-sm text-gray-500 mb-6">
-                                This mandate is pending your acceptance. Please review the document on the left carefully.
-                            </p>
 
-                            <div className="space-y-3">
-                                <button
-                                    onClick={() => setShowSignModal(true)}
-                                    disabled={!scrolledToBottom}
-                                    className="w-full bg-primary-green hover:bg-dark-green text-white py-3 rounded-xl font-bold transition-all shadow-lg shadow-green-900/10 flex items-center justify-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
-                                    title={!scrolledToBottom ? "Please read the entire document first" : ""}
-                                >
-                                    <CheckCircle className="w-4 h-4" />
-                                    Accept & Sign
-                                </button>
+                        {canAction && (
+                            <div className="flex gap-3">
                                 <button
                                     onClick={() => setShowRejectModal(true)}
-                                    className="w-full bg-white border border-red-200 text-red-600 hover:bg-red-50 py-3 rounded-xl font-medium transition-colors flex items-center justify-center gap-2"
+                                    className="px-4 py-2 border border-red-200 text-red-700 rounded-lg hover:bg-red-50 font-medium transition-colors"
                                 >
-                                    <XCircle className="w-4 h-4" />
-                                    Reject Request
+                                    Reject
+                                </button>
+                                <button
+                                    onClick={() => setShowSignModal(true)}
+                                    className="px-6 py-2 bg-primary-green text-white rounded-lg hover:bg-dark-green font-bold shadow-lg shadow-green-900/10 transition-colors flex items-center gap-2"
+                                >
+                                    <FileText className="w-4 h-4" />
+                                    Accept & Sign
                                 </button>
                             </div>
+                        )}
+                    </div>
+
+                    {/* Mandate Letter Display */}
+                    <MandateLetter
+                        dealType={mandate.deal_type}
+                        property={propertyDetails || mandate.property_details}
+                        mandate={mandate}
+                        activeSigner={activeSigner} // Who is currently needed to sign?
+                        isSigned={mandate.status === 'ACTIVE'}
+                        signatureUrl={mandate.broker_signature || undefined} // Display existing
+                        ownerSignatureUrl={mandate.seller_signature || undefined} // Display existing
+                        createdAt={mandate.created_at}
+                        signedAt={mandate.signed_at || undefined}
+                        roleTitle={mandate.seller_role || undefined}
+                    />
+
+                    {/* Accept/Sign Modal */}
+                    {/* Accept/Sign Modal */}
+                    {showSignModal && (
+                        <div className="fixed inset-0 bg-black/50 z-50 flex items-end sm:items-center justify-center p-0 sm:p-4 backdrop-blur-sm transition-all">
+                            <div className="bg-white rounded-t-2xl sm:rounded-2xl w-full sm:max-w-lg p-6 shadow-2xl animate-in slide-in-from-bottom duration-200 sm:duration-300">
+                                <div className="flex justify-between items-center mb-4">
+                                    <h3 className="text-xl font-bold">Accept & Sign Mandate</h3>
+                                    <button onClick={() => { setShowSignModal(false); setIsSigning(false); }} className="p-2 bg-gray-100 rounded-full hover:bg-gray-200">
+                                        <XCircle className="w-5 h-5 text-gray-500" />
+                                    </button>
+                                </div>
+
+                                {/* Content Logic */}
+                                {isSigning ? (
+                                    <div className="animate-in fade-in slide-in-from-right duration-200">
+                                        <div className="mb-2 flex items-center justify-between">
+                                            <div>
+                                                <h4 className="font-bold text-gray-800 text-lg">Digital Signature</h4>
+                                                <p className="text-sm text-gray-500">Please sign in the box below</p>
+                                            </div>
+                                            <button
+                                                onClick={() => setIsSigning(false)}
+                                                className="px-3 py-1 text-sm bg-gray-100 hover:bg-gray-200 rounded-md text-gray-600 transition-colors font-medium"
+                                            >
+                                                Back
+                                            </button>
+                                        </div>
+                                        <div className="mb-6">
+                                            <SignaturePad onEnd={(file: File | null) => {
+                                                setSignature(file);
+                                                setIsSigning(false);
+                                            }} />
+                                        </div>
+                                    </div>
+                                ) : (
+                                    <>
+                                        <p className="text-gray-600 text-sm mb-6 bg-blue-50 p-3 rounded-lg border border-blue-100 flex items-start gap-2">
+                                            <span className="text-blue-500 font-bold">ℹ️</span>
+                                            Please complete the following verification steps to accept the mandate.
+                                        </p>
+
+                                        <div className="grid grid-cols-2 gap-4 mb-8">
+                                            {/* 1. Signature Step */}
+                                            {!signature ? (
+                                                <button
+                                                    onClick={() => setIsSigning(true)}
+                                                    className="relative py-8 border-2 border-dashed border-gray-300 bg-gray-50/50 rounded-2xl flex flex-col items-center justify-center text-gray-500 hover:border-primary-green hover:bg-green-50/50 hover:text-primary-green transition-all group overflow-hidden"
+                                                >
+                                                    <div className="absolute top-3 right-3">
+                                                        <span className="bg-gray-200 text-gray-600 text-[10px] uppercase font-bold px-2 py-0.5 rounded-full">Required</span>
+                                                    </div>
+                                                    <div className="bg-white p-4 rounded-full mb-3 shadow-sm border border-gray-100 group-hover:scale-110 transition-transform duration-200">
+                                                        <FileText className="w-6 h-6" />
+                                                    </div>
+                                                    <span className="font-bold text-sm">Sign Mandate</span>
+                                                </button>
+                                            ) : (
+                                                <div onClick={() => setIsSigning(true)} className="relative py-8 bg-green-50 border-2 border-green-500 rounded-2xl flex flex-col items-center justify-center cursor-pointer group hover:shadow-md transition-all">
+                                                    <div className="absolute top-3 right-3 bg-green-500 text-white rounded-full p-0.5">
+                                                        <CheckCircle className="w-3 h-3" />
+                                                    </div>
+                                                    <div className="bg-white p-3 rounded-full mb-2 text-green-600 shadow-sm border border-green-100">
+                                                        <FileText className="w-5 h-5" />
+                                                    </div>
+                                                    <p className="font-bold text-green-800 text-sm">Signature Added</p>
+                                                    <span className="text-xs text-green-600 font-medium group-hover:underline mt-1">Edit / Resign</span>
+                                                </div>
+                                            )}
+
+                                            {/* 2. Selfie Step */}
+                                            {!selfie ? (
+                                                <button
+                                                    onClick={() => setShowSelfieModal(true)}
+                                                    className="relative py-8 border-2 border-dashed border-gray-300 bg-gray-50/50 rounded-2xl flex flex-col items-center justify-center text-gray-500 hover:border-primary-green hover:bg-green-50/50 hover:text-primary-green transition-all group overflow-hidden"
+                                                >
+                                                    <div className="absolute top-3 right-3">
+                                                        <span className="bg-gray-200 text-gray-600 text-[10px] uppercase font-bold px-2 py-0.5 rounded-full">Required</span>
+                                                    </div>
+                                                    <div className="bg-white p-4 rounded-full mb-3 shadow-sm border border-gray-100 group-hover:scale-110 transition-transform duration-200">
+                                                        <Camera className="w-6 h-6" />
+                                                    </div>
+                                                    <span className="font-bold text-sm">Take Selfie</span>
+                                                </button>
+                                            ) : (
+                                                <div onClick={() => setShowSelfieModal(true)} className="relative py-8 bg-green-50 border-2 border-green-500 rounded-2xl flex flex-col items-center justify-center cursor-pointer group hover:shadow-md transition-all overflow-hidden">
+                                                    <div className="absolute inset-0 z-0">
+                                                        <img src={URL.createObjectURL(selfie)} className="w-full h-full object-cover opacity-10" alt="preview" />
+                                                    </div>
+                                                    <div className="relative z-10 bg-white p-3 rounded-full mb-2 text-green-600 shadow-sm border border-green-100">
+                                                        <Camera className="w-5 h-5" />
+                                                    </div>
+                                                    <p className="relative z-10 font-bold text-green-800 text-sm">Selfie Captured</p>
+                                                    <span className="relative z-10 text-xs text-green-600 font-medium group-hover:underline mt-1">Retake</span>
+                                                    <div className="absolute top-3 right-3 bg-green-500 text-white rounded-full p-0.5 z-10">
+                                                        <CheckCircle className="w-3 h-3" />
+                                                    </div>
+                                                </div>
+                                            )}
+                                        </div>
+
+                                        <div className="flex justify-end gap-3 pt-4 border-t border-gray-100 pb-4 sm:pb-0 safe-area-bottom">
+                                            <button
+                                                onClick={() => { setShowSignModal(false); setIsSigning(false); }}
+                                                className="px-5 py-2.5 text-gray-600 font-semibold hover:bg-gray-100 rounded-xl transition-colors"
+                                            >
+                                                Cancel
+                                            </button>
+                                            <button
+                                                onClick={handleAccept}
+                                                disabled={actionLoading || !signature || !selfie}
+                                                className="bg-primary-green hover:bg-dark-green text-white px-8 py-2.5 rounded-xl font-bold disabled:opacity-50 disabled:cursor-not-allowed transition-all shadow-lg shadow-green-900/10 hover:shadow-green-900/20 flex items-center gap-2 transform active:scale-95"
+                                            >
+                                                {actionLoading ? <Loader2 className="animate-spin w-5 h-5" /> : "Confirm Approval"}
+                                            </button>
+                                        </div>
+                                    </>
+                                )}
+                            </div>
                         </div>
                     )}
 
-                    {isActive && (
-                        <div className="bg-white p-6 rounded-xl border border-gray-200 shadow-sm">
-                            <h3 className="font-bold text-gray-900 mb-4">Contract Status</h3>
-                            <div className="flex items-center gap-3 text-sm text-gray-600 mb-2">
-                                <CheckCircle className="w-5 h-5 text-green-500" />
-                                <span>Mandate is <span className="font-bold text-green-700">Active</span></span>
-                            </div>
-                            <div className="flex items-center gap-3 text-sm text-gray-600">
-                                <Clock className="w-5 h-5 text-gray-400" />
-                                <span>Expires on <span className="font-bold text-gray-900">{new Date(mandate.expiry_date!).toLocaleDateString()}</span></span>
+
+                    {/* Selfie Modal (Nested or separate) */}
+                    {showSelfieModal && (
+                        <div className="fixed inset-0 bg-black/80 z-[60] flex items-center justify-center p-4 backdrop-blur-sm transition-all">
+                            <div className="bg-white rounded-2xl w-full max-w-md p-6 shadow-2xl animate-in fade-in zoom-in duration-200">
+                                <div className="flex justify-between items-center mb-4">
+                                    <h3 className="text-xl font-bold">Selfie Verification</h3>
+                                    <button onClick={() => setShowSelfieModal(false)} className="p-2 bg-gray-100 rounded-full hover:bg-gray-200">
+                                        <XCircle className="w-5 h-5 text-gray-500" />
+                                    </button>
+                                </div>
+                                <SelfieCapture
+                                    onCapture={(file: File) => {
+                                        setSelfie(file);
+                                        setShowSelfieModal(false);
+                                    }}
+                                />
                             </div>
                         </div>
                     )}
 
-                    {isTerminatedByUser && (
-                        <div className="bg-red-50 p-6 rounded-xl border border-red-100 shadow-sm">
-                            <h3 className="font-bold text-red-900 mb-2">Mandate Cancelled</h3>
-                            <p className="text-sm text-red-700">
-                                This mandate was manually cancelled by the user.
-                            </p>
+                    {/* Reject Modal */}
+                    {showRejectModal && (
+                        <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4 backdrop-blur-sm">
+                            <div className="bg-white rounded-2xl w-full max-w-md p-6 shadow-2xl">
+                                <h3 className="text-xl font-bold text-gray-900 mb-4">Reject Mandate</h3>
+                                <p className="text-gray-500 text-sm mb-4">Please provide a reason for rejecting this mandate.</p>
+                                <textarea
+                                    value={rejectReason}
+                                    onChange={(e) => setRejectReason(e.target.value)}
+                                    className="w-full p-3 border border-gray-200 rounded-lg focus:ring-2 focus:ring-red-500 focus:border-red-500 outline-none min-h-[100px]"
+                                    placeholder="Reason for rejection..."
+                                />
+                                <div className="flex justify-end gap-3 mt-6">
+                                    <button
+                                        onClick={() => setShowRejectModal(false)}
+                                        className="px-4 py-2 text-gray-600 font-medium hover:bg-gray-100 rounded-lg"
+                                    >
+                                        Cancel
+                                    </button>
+                                    <button
+                                        onClick={handleReject}
+                                        disabled={actionLoading || !rejectReason}
+                                        className="bg-red-600 hover:bg-red-700 text-white px-6 py-2 rounded-lg font-bold disabled:opacity-50 transition-colors"
+                                    >
+                                        {actionLoading ? <Loader2 className="animate-spin w-4 h-4" /> : "Reject Mandate"}
+                                    </button>
+                                </div>
+                            </div>
                         </div>
                     )}
                 </div>
             </div>
-
-            {/* Sign Modal */}
-            {showSignModal && (
-                <div className="fixed inset-0 bg-black/50 z-50 flex items-end sm:items-center justify-center p-0 sm:p-4 backdrop-blur-sm transition-all">
-                    <div className="bg-white rounded-t-2xl sm:rounded-2xl w-full sm:max-w-lg p-6 shadow-2xl animate-in slide-in-from-bottom duration-200 sm:duration-300">
-                        <div className="flex justify-between items-center mb-2">
-                            <h3 className="text-xl font-bold">Digital Signature</h3>
-                            <button onClick={() => setShowSignModal(false)} className="p-2 bg-gray-100 rounded-full hover:bg-gray-200 lg:hidden">
-                                <XCircle className="w-5 h-5 text-gray-500" />
-                            </button>
-                        </div>
-                        <p className="text-gray-500 text-sm mb-4">Please sign below to accept the mandate agreement. This action is legally binding.</p>
-
-                        <SignaturePad onEnd={(file) => setSignature(file)} />
-
-                        {/* Terms Checkbox */}
-                        <div className="mt-4 flex items-start gap-3 p-3 bg-gray-50 rounded-lg border border-gray-100">
-                            <input
-                                type="checkbox"
-                                id="terms_agreement"
-                                checked={isAgreed}
-                                onChange={(e) => setIsAgreed(e.target.checked)}
-                                className="mt-1 w-4 h-4 text-primary-green border-gray-300 rounded focus:ring-primary-green"
-                            />
-                            <label htmlFor="terms_agreement" className="text-sm text-gray-600 cursor-pointer select-none">
-                                I have read and agree to the <span className="font-semibold text-gray-900">Mandate Terms and Conditions</span>.
-                            </label>
-                        </div>
-
-                        <div className="flex gap-3 justify-end mt-6 pt-4 border-t border-gray-100 pb-4 sm:pb-0 safe-area-bottom">
-                            <button
-                                onClick={() => setShowSignModal(false)}
-                                className="px-4 py-2 text-gray-600 font-medium hover:bg-gray-100 rounded-lg transition-colors hidden sm:block"
-                            >
-                                Cancel
-                            </button>
-                            <button
-                                onClick={handeAccept}
-                                disabled={!signature || !isAgreed || actionLoading}
-                                className="w-full sm:w-auto bg-primary-green hover:bg-dark-green text-white px-6 py-3 sm:py-2 rounded-lg font-bold disabled:opacity-50 disabled:cursor-not-allowed transition-colors flex items-center justify-center gap-2"
-                                title={!isAgreed ? "Please agree to terms" : (!signature ? "Please sign" : "")}
-                            >
-                                {actionLoading && <Loader2 className="animate-spin w-4 h-4" />}
-                                Confirm & Activate
-                            </button>
-                        </div>
-                    </div>
-                </div>
-            )}
-
-            {/* Reject Modal */}
-            {showRejectModal && (
-                <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4 backdrop-blur-sm">
-                    <div className="bg-white rounded-2xl max-w-lg w-full p-6 shadow-2xl animate-in fade-in zoom-in duration-200">
-                        <h3 className="text-xl font-bold mb-2 text-red-600">Reject Mandate</h3>
-                        <p className="text-gray-500 text-sm mb-4">Please provide a reason for rejecting this mandate request.</p>
-
-                        <textarea
-                            className="w-full border border-gray-300 rounded-xl p-3 focus:ring-2 focus:ring-red-500 focus:border-red-500 outline-none resize-none h-32"
-                            placeholder="e.g., Commission rate is too low..."
-                            value={rejectReason}
-                            onChange={(e) => setRejectReason(e.target.value)}
-                        />
-
-                        <div className="flex gap-3 justify-end mt-6">
-                            <button
-                                onClick={() => setShowRejectModal(false)}
-                                className="px-4 py-2 text-gray-600 font-medium hover:bg-gray-100 rounded-lg transition-colors"
-                            >
-                                Cancel
-                            </button>
-                            <button
-                                onClick={handleReject}
-                                disabled={!rejectReason || actionLoading}
-                                className="bg-red-600 hover:bg-red-700 text-white px-6 py-2 rounded-lg font-bold disabled:opacity-50 transition-colors flex items-center gap-2"
-                            >
-                                {actionLoading && <Loader2 className="animate-spin w-4 h-4" />}
-                                Reject
-                            </button>
-                        </div>
-                    </div>
-                </div>
-            )}
-
-        </div>
+        </div >
     );
 }

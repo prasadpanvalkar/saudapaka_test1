@@ -9,10 +9,18 @@ interface User {
   last_name?: string;   // Added for layout compatibility
   full_name: string;
   email: string;
+  phone_number?: string;
   is_active_seller: boolean;
   is_active_broker: boolean;
   is_staff: boolean;
   kyc_verified?: boolean;
+  role_category?: string;
+  is_superuser?: boolean;
+  broker_profile?: {
+    services_offered: string[];
+    experience_years: number;
+    is_verified: boolean;
+  };
 }
 
 interface AuthState {

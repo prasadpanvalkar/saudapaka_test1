@@ -1,0 +1,820 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>List Property - SaudaPakka</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script defer src="https://cdn.jsdelivr.net/npm/alpinejs@3.x.x/dist/cdn.min.js"></script>
+    <style>
+        [x-cloak] {
+            display: none !important;
+        }
+    </style>
+</head>
+
+<body class="bg-gray-50">
+    <div x-data="propertyWizard()" x-cloak class="min-h-screen py-8 px-4">
+        <!-- Header -->
+        <div class="max-w-4xl mx-auto mb-8">
+            <h1 class="text-3xl font-bold text-blue-600 mb-2">SaudaPakka</h1>
+            <p class="text-gray-600">List your property in 4 simple steps</p>
+        </div>
+
+        <!-- Progress Bar -->
+        <div class="max-w-4xl mx-auto mb-8">
+            <div class="flex items-center justify-between mb-4">
+                <template x-for="step in steps" :key="step.id">
+                    <div class="flex items-center flex-1">
+                        <div class="flex flex-col items-center flex-1">
+                            <div :class="currentStep >= step.id ? 'bg-blue-600 text-white' : 'bg-gray-300 text-gray-600'"
+                                class="w-10 h-10 rounded-full flex items-center justify-center font-semibold mb-2 transition-colors">
+                                <span x-text="step.id"></span>
+                            </div>
+                            <span :class="currentStep >= step.id ? 'text-blue-600 font-medium' : 'text-gray-500'"
+                                class="text-xs sm:text-sm text-center hidden sm:block" x-text="step.name"></span>
+                        </div>
+                        <div x-show="step.id < 4" :class="currentStep > step.id ? 'bg-blue-600' : 'bg-gray-300'"
+                            class="h-1 flex-1 transition-colors hidden sm:block"></div>
+                    </div>
+                </template>
+            </div>
+        </div>
+
+        <!-- Form Container -->
+        <div class="max-w-4xl mx-auto bg-white rounded-lg shadow-lg p-6 sm:p-8">
+            <form @submit.prevent="submitForm">
+
+                <!-- Step 1: Classification -->
+                <div x-show="currentStep === 1" class="space-y-6">
+                    <h2 class="text-2xl font-bold text-gray-800 mb-6">Property Classification</h2>
+
+                    <!-- Sell vs Rent -->
+                    <div>
+                        <label class="block text-sm font-medium text-gray-700 mb-3">Listing Type</label>
+                        <div class="grid grid-cols-2 gap-4">
+                            <button type="button" @click="formData.listingType = 'sell'"
+                                :class="formData.listingType === 'sell' ? 'border-blue-600 bg-blue-50 ring-2 ring-blue-600' : 'border-gray-300 hover:border-blue-400'"
+                                class="border-2 rounded-lg p-6 transition-all cursor-pointer">
+                                <div class="text-4xl mb-2">🏠</div>
+                                <div class="font-semibold text-gray-800">Sell</div>
+                            </button>
+                            <button type="button" @click="formData.listingType = 'rent'"
+                                :class="formData.listingType === 'rent' ? 'border-blue-600 bg-blue-50 ring-2 ring-blue-600' : 'border-gray-300 hover:border-blue-400'"
+                                class="border-2 rounded-lg p-6 transition-all cursor-pointer">
+                                <div class="text-4xl mb-2">🔑</div>
+                                <div class="font-semibold text-gray-800">Rent</div>
+                            </button>
+                        </div>
+                    </div>
+
+                    <!-- Property Category -->
+                    <div>
+                        <label class="block text-sm font-medium text-gray-700 mb-3">Property Category</label>
+                        <div class="grid grid-cols-2 sm:grid-cols-3 gap-3">
+                            <template x-for="category in categories" :key="category.value">
+                                <button type="button" @click="selectCategory(category.value)"
+                                    :class="formData.category === category.value ? 'border-blue-600 bg-blue-50 ring-2 ring-blue-600' : 'border-gray-300 hover:border-blue-400'"
+                                    class="border-2 rounded-lg p-4 transition-all cursor-pointer text-center">
+                                    <div class="text-2xl mb-1" x-text="category.icon"></div>
+                                    <div class="font-medium text-sm text-gray-800" x-text="category.label"></div>
+                                </button>
+                            </template>
+                        </div>
+                    </div>
+
+                    <!-- Dynamic Sub-type -->
+                    <div x-show="formData.category && subTypes.length > 0">
+                        <label class="block text-sm font-medium text-gray-700 mb-3">Property Sub-type</label>
+                        <select x-model="formData.subType"
+                            class="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500">
+                            <option value="">Select sub-type</option>
+                            <template x-for="subType in subTypes" :key="subType">
+                                <option :value="subType" x-text="subType"></option>
+                            </template>
+                        </select>
+                    </div>
+                </div>
+
+                <!-- Step 2: Technical Specifications -->
+                <div x-show="currentStep === 2" class="space-y-6">
+                    <h2 class="text-2xl font-bold text-gray-800 mb-6">Technical Specifications</h2>
+
+                    <!-- Section A: Residential -->
+                    <div x-show="isResidential" class="space-y-4">
+                        <div>
+                            <label class="block text-sm font-medium text-gray-700 mb-2">Project Name</label>
+                            <input type="text" x-model="formData.projectName" placeholder="e.g., Prestige Heights"
+                                class="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500">
+                        </div>
+
+                        <div class="grid grid-cols-1 sm:grid-cols-3 gap-4">
+                            <div>
+                                <label class="block text-sm font-medium text-gray-700 mb-2">BHK</label>
+                                <select x-model="formData.bhk"
+                                    class="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500">
+                                    <option value="">Select</option>
+                                    <option value="1">1 BHK</option>
+                                    <option value="2">2 BHK</option>
+                                    <option value="3">3 BHK</option>
+                                    <option value="4">4 BHK</option>
+                                    <option value="5+">4+ BHK</option>
+                                </select>
+                            </div>
+
+                            <div>
+                                <label class="block text-sm font-medium text-gray-700 mb-2">Bathrooms</label>
+                                <input type="number" x-model="formData.bathrooms" placeholder="0" min="0"
+                                    class="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500">
+                            </div>
+
+                            <div>
+                                <label class="block text-sm font-medium text-gray-700 mb-2">Balconies</label>
+                                <input type="number" x-model="formData.balconies" placeholder="0" min="0"
+                                    class="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500">
+                            </div>
+                        </div>
+
+                        <div>
+                            <label class="block text-sm font-medium text-gray-700 mb-2">Furnishing Status</label>
+                            <div class="grid grid-cols-3 gap-3">
+                                <button type="button" @click="formData.furnishing = 'unfurnished'"
+                                    :class="formData.furnishing === 'unfurnished' ? 'border-blue-600 bg-blue-50' : 'border-gray-300'"
+                                    class="border-2 rounded-lg p-3 text-sm font-medium transition-all">
+                                    Unfurnished
+                                </button>
+                                <button type="button" @click="formData.furnishing = 'semi'"
+                                    :class="formData.furnishing === 'semi' ? 'border-blue-600 bg-blue-50' : 'border-gray-300'"
+                                    class="border-2 rounded-lg p-3 text-sm font-medium transition-all">
+                                    Semi-Furnished
+                                </button>
+                                <button type="button" @click="formData.furnishing = 'fully'"
+                                    :class="formData.furnishing === 'fully' ? 'border-blue-600 bg-blue-50' : 'border-gray-300'"
+                                    class="border-2 rounded-lg p-3 text-sm font-medium transition-all">
+                                    Fully Furnished
+                                </button>
+                            </div>
+                        </div>
+
+                        <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                            <div>
+                                <label class="block text-sm font-medium text-gray-700 mb-2">Floor Number</label>
+                                <input type="text" x-model="formData.floorNumber" placeholder="e.g., 5th Floor"
+                                    class="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500">
+                            </div>
+
+                            <div>
+                                <label class="block text-sm font-medium text-gray-700 mb-2">Total Floors</label>
+                                <input type="number" x-model="formData.totalFloors" placeholder="0" min="0"
+                                    class="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500">
+                            </div>
+                        </div>
+
+                        <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                            <div>
+                                <label class="block text-sm font-medium text-gray-700 mb-2">Construction Status</label>
+                                <select x-model="formData.constructionStatus"
+                                    class="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500">
+                                    <option value="">Select</option>
+                                    <option value="ready">Ready to Move</option>
+                                    <option value="under_construction">Under Construction</option>
+                                </select>
+                            </div>
+
+                            <div>
+                                <label class="block text-sm font-medium text-gray-700 mb-2">Possession Date</label>
+                                <input type="date" x-model="formData.possessionDate"
+                                    class="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500">
+                            </div>
+                        </div>
+
+                        <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                            <div>
+                                <label class="block text-sm font-medium text-gray-700 mb-2">Age of Construction</label>
+                                <input type="text" x-model="formData.ageOfConstruction" placeholder="e.g., 2 years"
+                                    class="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500">
+                            </div>
+
+                            <div>
+                                <label class="block text-sm font-medium text-gray-700 mb-2">Facing</label>
+                                <select x-model="formData.facing"
+                                    class="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500">
+                                    <option value="">Select</option>
+                                    <option value="north">North</option>
+                                    <option value="south">South</option>
+                                    <option value="east">East</option>
+                                    <option value="west">West</option>
+                                    <option value="north-east">North-East</option>
+                                    <option value="north-west">North-West</option>
+                                    <option value="south-east">South-East</option>
+                                    <option value="south-west">South-West</option>
+                                </select>
+                            </div>
+                        </div>
+
+                        <div>
+                            <label class="block text-sm font-medium text-gray-700 mb-2">Maintenance (₹/month)</label>
+                            <input type="number" x-model="formData.maintenance" placeholder="5000" min="0"
+                                class="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500">
+                        </div>
+
+                        <div>
+                            <label class="block text-sm font-medium text-gray-700 mb-3">Amenities</label>
+                            <div class="grid grid-cols-2 sm:grid-cols-4 gap-3">
+                                <template x-for="amenity in residentialAmenities" :key="amenity">
+                                    <label class="flex items-center space-x-2 cursor-pointer">
+                                        <input type="checkbox" :value="amenity" x-model="formData.amenities"
+                                            class="w-5 h-5 text-blue-600 border-gray-300 rounded focus:ring-blue-500">
+                                        <span class="text-sm text-gray-700" x-text="amenity"></span>
+                                    </label>
+                                </template>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Section B: Plot/Land/Commercial -->
+                    <div x-show="!isResidential" class="space-y-4">
+                        <div>
+                            <label class="block text-sm font-medium text-gray-700 mb-2">Project Name</label>
+                            <input type="text" x-model="formData.projectName" placeholder="e.g., Green Valley Phase 2"
+                                class="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500">
+                        </div>
+
+                        <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                            <div>
+                                <label class="block text-sm font-medium text-gray-700 mb-2">Area</label>
+                                <input type="number" x-model="formData.area" placeholder="1000" min="0"
+                                    class="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500">
+                            </div>
+
+                            <div>
+                                <label class="block text-sm font-medium text-gray-700 mb-2">Unit</label>
+                                <select x-model="formData.areaUnit"
+                                    class="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500">
+                                    <option value="sqft">Sq.ft</option>
+                                    <option value="acre">Acre</option>
+                                    <option value="guntha">Guntha</option>
+                                </select>
+                            </div>
+                        </div>
+
+                        <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                            <div>
+                                <label class="block text-sm font-medium text-gray-700 mb-2">Super Built-up Area
+                                    (Sq.ft)</label>
+                                <input type="number" x-model="formData.superBuiltUp" placeholder="1200" min="0"
+                                    class="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500">
+                            </div>
+
+                            <div>
+                                <label class="block text-sm font-medium text-gray-700 mb-2">Carpet Area (Sq.ft)</label>
+                                <input type="number" x-model="formData.carpetArea" placeholder="1000" min="0"
+                                    class="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500">
+                            </div>
+                        </div>
+
+                        <div>
+                            <label class="block text-sm font-medium text-gray-700 mb-2">Facing</label>
+                            <select x-model="formData.facing"
+                                class="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500">
+                                <option value="">Select</option>
+                                <option value="north">North</option>
+                                <option value="south">South</option>
+                                <option value="east">East</option>
+                                <option value="west">West</option>
+                                <option value="north-east">North-East</option>
+                                <option value="north-west">North-West</option>
+                                <option value="south-east">South-East</option>
+                                <option value="south-west">South-West</option>
+                            </select>
+                        </div>
+
+                        <div>
+                            <label class="block text-sm font-medium text-gray-700 mb-3">Amenities</label>
+                            <div class="grid grid-cols-2 sm:grid-cols-4 gap-3">
+                                <template x-for="amenity in plotAmenities" :key="amenity">
+                                    <label class="flex items-center space-x-2 cursor-pointer">
+                                        <input type="checkbox" :value="amenity" x-model="formData.amenities"
+                                            class="w-5 h-5 text-blue-600 border-gray-300 rounded focus:ring-blue-500">
+                                        <span class="text-sm text-gray-700" x-text="amenity"></span>
+                                    </label>
+                                </template>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Title & Description Section (NEW) -->
+                    <div class="mt-8 pt-6 border-t border-gray-200">
+                        <h3 class="text-lg font-semibold text-gray-800 mb-4">Listing Title & Description</h3>
+
+                        <!-- Auto-generated Title Preview -->
+                        <div class="mb-4 p-4 bg-blue-50 border border-blue-200 rounded-lg">
+                            <label class="block text-xs font-medium text-blue-700 mb-2">AUTO-GENERATED TITLE</label>
+                            <p class="text-gray-800 font-semibold"
+                                x-text="autoTitle || 'Fill in property details to generate title...'"></p>
+                        </div>
+
+                        <!-- Auto-generated Description -->
+                        <div class="mb-4">
+                            <div class="flex items-center justify-between mb-2">
+                                <label class="block text-sm font-medium text-gray-700">Auto-Generated
+                                    Description</label>
+                                <button type="button" @click="copyAutoDescription"
+                                    class="text-xs text-blue-600 hover:text-blue-700 font-medium">
+                                    📋 Copy to Custom
+                                </button>
+                            </div>
+                            <div class="p-4 bg-gray-50 border border-gray-200 rounded-lg max-h-32 overflow-y-auto">
+                                <p class="text-sm text-gray-700 whitespace-pre-line"
+                                    x-text="autoDescription || 'Fill in property details to generate description...'">
+                                </p>
+                            </div>
+                        </div>
+
+                        <!-- Custom Description -->
+                        <div>
+                            <label class="block text-sm font-medium text-gray-700 mb-2">
+                                Your Custom Description
+                                <span class="text-gray-500 text-xs">(Optional - Add or edit the description)</span>
+                            </label>
+                            <textarea x-model="formData.customDescription" rows="6"
+                                placeholder="Add your own description here... You can copy the auto-generated one and modify it, or write your own from scratch."
+                                class="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 resize-y"></textarea>
+                            <p class="text-xs text-gray-500 mt-1">
+                                <span x-text="formData.customDescription.length"></span> characters
+                                <span x-show="formData.customDescription.length > 0" class="text-green-600 ml-2">✓
+                                    Custom description added</span>
+                            </p>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Step 3: Location & Media -->
+                <div x-show="currentStep === 3" class="space-y-6">
+                    <h2 class="text-2xl font-bold text-gray-800 mb-6">Location & Media</h2>
+
+                    <div class="space-y-4">
+                        <div>
+                            <label class="block text-sm font-medium text-gray-700 mb-2">Address Line 1</label>
+                            <input type="text" x-model="formData.address1" placeholder="Building/House Number and Name"
+                                class="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500">
+                        </div>
+
+                        <div>
+                            <label class="block text-sm font-medium text-gray-700 mb-2">Address Line 2</label>
+                            <input type="text" x-model="formData.address2" placeholder="Street/Road Name"
+                                class="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500">
+                        </div>
+
+                        <div>
+                            <label class="block text-sm font-medium text-gray-700 mb-2">Address Line 3</label>
+                            <input type="text" x-model="formData.address3" placeholder="Landmark (Optional)"
+                                class="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500">
+                        </div>
+
+                        <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                            <div>
+                                <label class="block text-sm font-medium text-gray-700 mb-2">Locality</label>
+                                <input type="text" x-model="formData.locality" placeholder="e.g., Koregaon Park"
+                                    class="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500">
+                            </div>
+
+                            <div>
+                                <label class="block text-sm font-medium text-gray-700 mb-2">City</label>
+                                <input type="text" x-model="formData.city" placeholder="e.g., Pune"
+                                    class="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500">
+                            </div>
+                        </div>
+
+                        <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                            <div>
+                                <label class="block text-sm font-medium text-gray-700 mb-2">Area</label>
+                                <input type="text" x-model="formData.locationArea" placeholder="e.g., East Pune"
+                                    class="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500">
+                            </div>
+
+                            <div>
+                                <label class="block text-sm font-medium text-gray-700 mb-2">State</label>
+                                <input type="text" x-model="formData.state" placeholder="e.g., Maharashtra"
+                                    class="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500">
+                            </div>
+                        </div>
+
+                        <div>
+                            <label class="block text-sm font-medium text-gray-700 mb-2">Pincode</label>
+                            <input type="text" x-model="formData.pincode" placeholder="411001" maxlength="6"
+                                class="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500">
+                        </div>
+
+                        <!-- Map Placeholder -->
+                        <div class="border-2 border-dashed border-gray-300 rounded-lg p-6 bg-gray-50">
+                            <div class="text-center">
+                                <div class="text-4xl mb-3">📍</div>
+                                <div class="mb-3">
+                                    <input type="text" placeholder="Search location on map..."
+                                        class="w-full max-w-md px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500">
+                                </div>
+                                <p class="text-sm text-gray-500">Map integration placeholder - Click to pin location</p>
+                            </div>
+                        </div>
+
+                        <!-- Property Photos -->
+                        <div>
+                            <label class="block text-sm font-medium text-gray-700 mb-2">Property Photos</label>
+                            <div
+                                class="border-2 border-dashed border-gray-300 rounded-lg p-6 text-center bg-gray-50 hover:bg-gray-100 transition-colors cursor-pointer">
+                                <input type="file" multiple accept="image/*"
+                                    @change="handleFileUpload($event, 'photos')" class="hidden" id="propertyPhotos">
+                                <label for="propertyPhotos" class="cursor-pointer">
+                                    <div class="text-4xl mb-2">📷</div>
+                                    <p class="text-sm text-gray-600 font-medium">Click to upload property photos</p>
+                                    <p class="text-xs text-gray-500 mt-1">Upload multiple images (JPG, PNG)</p>
+                                </label>
+                                <div x-show="formData.photos.length > 0" class="mt-3 text-sm text-blue-600">
+                                    <span x-text="formData.photos.length"></span> file(s) selected
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Floor Plan -->
+                        <div>
+                            <label class="block text-sm font-medium text-gray-700 mb-2">Floor Plan</label>
+                            <div
+                                class="border-2 border-dashed border-gray-300 rounded-lg p-6 text-center bg-gray-50 hover:bg-gray-100 transition-colors cursor-pointer">
+                                <input type="file" accept="image/*,application/pdf"
+                                    @change="handleFileUpload($event, 'floorPlan')" class="hidden" id="floorPlan">
+                                <label for="floorPlan" class="cursor-pointer">
+                                    <div class="text-4xl mb-2">📐</div>
+                                    <p class="text-sm text-gray-600 font-medium">Upload floor plan</p>
+                                    <p class="text-xs text-gray-500 mt-1">Image or PDF format</p>
+                                </label>
+                                <div x-show="formData.floorPlan" class="mt-3 text-sm text-blue-600">
+                                    Floor plan uploaded
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Step 4: Verification & Pricing -->
+                <div x-show="currentStep === 4" class="space-y-6">
+                    <h2 class="text-2xl font-bold text-gray-800 mb-6">Verification & Pricing</h2>
+
+                    <div class="space-y-4">
+                        <!-- Document Upload -->
+                        <div>
+                            <label class="block text-sm font-medium text-gray-700 mb-2">Legal Documents</label>
+                            <div
+                                class="border-2 border-dashed border-gray-300 rounded-lg p-6 text-center bg-gray-50 hover:bg-gray-100 transition-colors cursor-pointer">
+                                <input type="file" multiple accept=".pdf,.jpg,.jpeg,.png"
+                                    @change="handleFileUpload($event, 'documents')" class="hidden" id="legalDocs">
+                                <label for="legalDocs" class="cursor-pointer">
+                                    <div class="text-4xl mb-2">📄</div>
+                                    <p class="text-sm text-gray-600 font-medium">Upload legal documents</p>
+                                    <p class="text-xs text-gray-500 mt-1">Property papers, ownership proof, NOC, etc.
+                                    </p>
+                                </label>
+                                <div x-show="formData.documents.length > 0" class="mt-3 text-sm text-blue-600">
+                                    <span x-text="formData.documents.length"></span> document(s) uploaded
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Pricing -->
+                        <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                            <div>
+                                <label class="block text-sm font-medium text-gray-700 mb-2">Price per Sq.ft (₹)</label>
+                                <input type="number" x-model="formData.pricePerSqft" @input="calculateTotalPrice"
+                                    placeholder="5000" min="0"
+                                    class="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500">
+                            </div>
+
+                            <div>
+                                <label class="block text-sm font-medium text-gray-700 mb-2">Total Price (₹)</label>
+                                <input type="number" x-model="formData.totalPrice" placeholder="5000000" min="0"
+                                    class="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500">
+                            </div>
+                        </div>
+
+                        <!-- Summary Box -->
+                        <div class="bg-blue-50 border border-blue-200 rounded-lg p-6 mt-6">
+                            <h3 class="text-lg font-semibold text-gray-800 mb-4">Listing Summary</h3>
+
+                            <!-- Title Preview -->
+                            <div class="mb-4 pb-4 border-b border-blue-200">
+                                <p class="text-xs font-medium text-gray-600 mb-1">LISTING TITLE</p>
+                                <p class="text-base font-bold text-gray-800" x-text="autoTitle || 'Not generated yet'">
+                                </p>
+                            </div>
+
+                            <!-- Description Preview -->
+                            <div class="mb-4 pb-4 border-b border-blue-200">
+                                <p class="text-xs font-medium text-gray-600 mb-1">DESCRIPTION</p>
+                                <p class="text-sm text-gray-700 line-clamp-3"
+                                    x-text="formData.customDescription || autoDescription || 'Not generated yet'"></p>
+                                <p class="text-xs text-gray-500 mt-2" x-show="formData.customDescription">
+                                    ✓ Using custom description
+                                </p>
+                                <p class="text-xs text-gray-500 mt-2"
+                                    x-show="!formData.customDescription && autoDescription">
+                                    Using auto-generated description
+                                </p>
+                            </div>
+
+                            <div class="space-y-2 text-sm">
+                                <div class="flex justify-between">
+                                    <span class="text-gray-600">Listing Type:</span>
+                                    <span class="font-medium capitalize" x-text="formData.listingType || '-'"></span>
+                                </div>
+                                <div class="flex justify-between">
+                                    <span class="text-gray-600">Category:</span>
+                                    <span class="font-medium capitalize" x-text="formData.category || '-'"></span>
+                                </div>
+                                <div class="flex justify-between" x-show="formData.subType">
+                                    <span class="text-gray-600">Sub-type:</span>
+                                    <span class="font-medium" x-text="formData.subType"></span>
+                                </div>
+                                <div class="flex justify-between" x-show="formData.bhk">
+                                    <span class="text-gray-600">Configuration:</span>
+                                    <span class="font-medium" x-text="formData.bhk + ' BHK'"></span>
+                                </div>
+                                <div class="flex justify-between" x-show="formData.city">
+                                    <span class="text-gray-600">Location:</span>
+                                    <span class="font-medium" x-text="formData.city"></span>
+                                </div>
+                                <div class="flex justify-between border-t border-blue-300 pt-2 mt-2">
+                                    <span class="text-gray-700 font-medium">Total Price:</span>
+                                    <span class="font-bold text-blue-600 text-lg"
+                                        x-text="formData.totalPrice ? '₹ ' + Number(formData.totalPrice).toLocaleString('en-IN') : '-'"></span>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Navigation Buttons -->
+                <div class="flex justify-between mt-8 pt-6 border-t border-gray-200">
+                    <button type="button" @click="previousStep" x-show="currentStep > 1"
+                        class="px-6 py-3 bg-gray-200 text-gray-700 font-medium rounded-lg hover:bg-gray-300 transition-colors">
+                        ← Previous
+                    </button>
+
+                    <div class="flex-1"></div>
+
+                    <button type="button" @click="nextStep" x-show="currentStep < 4"
+                        class="px-6 py-3 bg-blue-600 text-white font-medium rounded-lg hover:bg-blue-700 transition-colors">
+                        Next →
+                    </button>
+
+                    <button type="submit" x-show="currentStep === 4"
+                        class="px-8 py-3 bg-green-600 text-white font-semibold rounded-lg hover:bg-green-700 transition-colors shadow-lg">
+                        📤 Publish Listing
+                    </button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <script>
+        function propertyWizard() {
+            return {
+                currentStep: 1,
+                steps: [
+                    { id: 1, name: 'Classification' },
+                    { id: 2, name: 'Specifications' },
+                    { id: 3, name: 'Location & Media' },
+                    { id: 4, name: 'Pricing' }
+                ],
+                categories: [
+                    { value: 'flat', label: 'Flat/Apartment', icon: '🏢' },
+                    { value: 'villa', label: 'Villa/Bungalow', icon: '🏡' },
+                    { value: 'plot', label: 'Plot', icon: '📐' },
+                    { value: 'land', label: 'Land', icon: '🌾' },
+                    { value: 'commercial', label: 'Commercial', icon: '🏪' }
+                ],
+                subTypeMap: {
+                    villa: ['Bungalow', 'Twin Bungalow', 'Villa', 'Rowhouse'],
+                    plot: ['Residential Plot', 'Residential Gunthewari Plot', 'Commercial Plot'],
+                    land: ['Agricultural Land', 'Industrial Land'],
+                    commercial: ['Shop', 'Office', 'Showroom']
+                },
+                residentialAmenities: ['Water', 'Electricity', 'Road', 'Security', 'Lift', 'Garden', 'Parking', 'Gym'],
+                plotAmenities: ['Water', 'Electricity', 'Road', 'Fencing'],
+                formData: {
+                    listingType: '',
+                    category: '',
+                    subType: '',
+                    projectName: '',
+                    bhk: '',
+                    bathrooms: '',
+                    balconies: '',
+                    furnishing: '',
+                    floorNumber: '',
+                    totalFloors: '',
+                    constructionStatus: '',
+                    possessionDate: '',
+                    ageOfConstruction: '',
+                    facing: '',
+                    maintenance: '',
+                    amenities: [],
+                    area: '',
+                    areaUnit: 'sqft',
+                    superBuiltUp: '',
+                    carpetArea: '',
+                    address1: '',
+                    address2: '',
+                    address3: '',
+                    locality: '',
+                    city: '',
+                    locationArea: '',
+                    state: '',
+                    pincode: '',
+                    photos: [],
+                    floorPlan: null,
+                    documents: [],
+                    pricePerSqft: '',
+                    totalPrice: '',
+                    customDescription: ''
+                },
+
+                get subTypes() {
+                    return this.subTypeMap[this.formData.category] || [];
+                },
+
+                get isResidential() {
+                    return this.formData.category === 'flat' || this.formData.category === 'villa';
+                },
+
+                get autoTitle() {
+                    let title = '';
+
+                    if (this.formData.bhk && this.isResidential) {
+                        title += `${this.formData.bhk} BHK `;
+                    }
+
+                    if (this.formData.subType) {
+                        title += `${this.formData.subType} `;
+                    } else if (this.formData.category) {
+                        const categoryLabel = this.categories.find(c => c.value === this.formData.category)?.label || '';
+                        title += `${categoryLabel} `;
+                    }
+
+                    if (this.formData.listingType) {
+                        title += `for ${this.formData.listingType === 'sell' ? 'Sale' : 'Rent'} `;
+                    }
+
+                    if (this.formData.locality && this.formData.city) {
+                        title += `in ${this.formData.locality}, ${this.formData.city}`;
+                    } else if (this.formData.city) {
+                        title += `in ${this.formData.city}`;
+                    }
+
+                    return title.trim() || '';
+                },
+
+                get autoDescription() {
+                    if (!this.formData.category) return '';
+
+                    let desc = '';
+
+                    // Opening line
+                    if (this.isResidential) {
+                        desc += `${this.formData.bhk ? this.formData.bhk + ' BHK' : 'Beautiful'} ${this.formData.subType || this.formData.category} `;
+                        desc += `available for ${this.formData.listingType === 'sell' ? 'sale' : 'rent'}`;
+                        if (this.formData.locality) desc += ` in ${this.formData.locality}`;
+                        desc += '. ';
+
+                        // Property details
+                        const details = [];
+                        if (this.formData.bathrooms) details.push(`${this.formData.bathrooms} bathrooms`);
+                        if (this.formData.balconies) details.push(`${this.formData.balconies} balconies`);
+                        if (this.formData.furnishing) details.push(`${this.formData.furnishing} furnished`);
+                        if (this.formData.facing) details.push(`${this.formData.facing} facing`);
+
+                        if (details.length > 0) {
+                            desc += `This property features ${details.join(', ')}. `;
+                        }
+
+                        // Floor and construction
+                        if (this.formData.floorNumber && this.formData.totalFloors) {
+                            desc += `Located on ${this.formData.floorNumber} out of ${this.formData.totalFloors} floors. `;
+                        }
+
+                        if (this.formData.constructionStatus === 'ready') {
+                            desc += 'Ready to move in. ';
+                        } else if (this.formData.constructionStatus === 'under_construction' && this.formData.possessionDate) {
+                            desc += `Under construction with possession expected by ${this.formData.possessionDate}. `;
+                        }
+
+                        // Amenities
+                        if (this.formData.amenities.length > 0) {
+                            desc += `Amenities include: ${this.formData.amenities.join(', ')}. `;
+                        }
+
+                        // Maintenance
+                        if (this.formData.maintenance) {
+                            desc += `Monthly maintenance: ₹${Number(this.formData.maintenance).toLocaleString('en-IN')}. `;
+                        }
+                    } else {
+                        // Plot/Land/Commercial
+                        desc += `${this.formData.subType || this.formData.category} `;
+                        desc += `available for ${this.formData.listingType === 'sell' ? 'sale' : 'rent'}`;
+                        if (this.formData.locality) desc += ` in ${this.formData.locality}`;
+                        desc += '. ';
+
+                        // Area details
+                        if (this.formData.area) {
+                            desc += `Total area: ${this.formData.area} ${this.formData.areaUnit}. `;
+                        }
+
+                        if (this.formData.carpetArea) {
+                            desc += `Carpet area: ${this.formData.carpetArea} sq.ft. `;
+                        }
+
+                        if (this.formData.facing) {
+                            desc += `${this.formData.facing} facing. `;
+                        }
+
+                        // Amenities
+                        if (this.formData.amenities.length > 0) {
+                            desc += `Amenities: ${this.formData.amenities.join(', ')}. `;
+                        }
+                    }
+
+                    // Project name
+                    if (this.formData.projectName) {
+                        desc += `Part of ${this.formData.projectName} project. `;
+                    }
+
+                    // Pricing
+                    if (this.formData.totalPrice) {
+                        desc += `Price: ₹${Number(this.formData.totalPrice).toLocaleString('en-IN')}. `;
+                    }
+
+                    // Closing
+                    desc += 'Contact us for more details and site visit.';
+
+                    return desc.trim();
+                },
+
+                selectCategory(category) {
+                    this.formData.category = category;
+                    this.formData.subType = '';
+                    this.formData.amenities = [];
+                },
+
+                copyAutoDescription() {
+                    this.formData.customDescription = this.autoDescription;
+                },
+
+                nextStep() {
+                    if (this.currentStep < 4) {
+                        this.currentStep++;
+                        window.scrollTo({ top: 0, behavior: 'smooth' });
+                    }
+                },
+
+                previousStep() {
+                    if (this.currentStep > 1) {
+                        this.currentStep--;
+                        window.scrollTo({ top: 0, behavior: 'smooth' });
+                    }
+                },
+
+                handleFileUpload(event, field) {
+                    const files = event.target.files;
+                    if (field === 'photos' || field === 'documents') {
+                        this.formData[field] = Array.from(files);
+                    } else {
+                        this.formData[field] = files[0];
+                    }
+                },
+
+                calculateTotalPrice() {
+                    const area = this.formData.area || this.formData.carpetArea || 0;
+                    const pricePerSqft = this.formData.pricePerSqft || 0;
+                    if (area && pricePerSqft) {
+                        this.formData.totalPrice = area * pricePerSqft;
+                    }
+                },
+
+                submitForm() {
+                    const submitData = {
+                        ...this.formData,
+                        generatedTitle: this.autoTitle,
+                        generatedDescription: this.autoDescription,
+                        finalDescription: this.formData.customDescription || this.autoDescription
+                    };
+
+                    console.log('Form Data to Submit:', submitData);
+                    alert('🎉 Property listing submitted successfully!');
+
+
+                }
+            }
+        }
+    </script>
+</body>
+
+</html>

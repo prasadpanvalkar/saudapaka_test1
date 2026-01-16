@@ -46,9 +46,9 @@ export default function Navbar() {
             </Link>
 
             {user ? (
-              <Link href="/dashboard/overview">
+              <Link href={user.is_staff || user.is_superuser ? "/admin" : "/dashboard/overview"}>
                 <Button className="bg-[#2D5F3F] hover:bg-[#1B3A2C] text-white px-6 py-2.5 rounded-lg font-medium shadow-sm border-none transition-all">
-                  Dashboard
+                  {user.is_staff || user.is_superuser ? "Admin Panel" : "Dashboard"}
                 </Button>
               </Link>
             ) : (
@@ -108,9 +108,9 @@ export default function Navbar() {
           {/* Mobile CTA Button */}
           <div className="pt-3 border-t border-gray-100">
             {user ? (
-              <Link href="/dashboard/overview" onClick={closeMobileMenu}>
+              <Link href={user.is_staff || user.is_superuser ? "/admin" : "/dashboard/overview"} onClick={closeMobileMenu}>
                 <Button className="w-full bg-[#2D5F3F] hover:bg-[#1B3A2C] text-white py-3 rounded-lg font-semibold shadow-md border-none transition-all">
-                  Go to Dashboard
+                  {user.is_staff || user.is_superuser ? "Go to Admin Panel" : "Go to Dashboard"}
                 </Button>
               </Link>
             ) : (

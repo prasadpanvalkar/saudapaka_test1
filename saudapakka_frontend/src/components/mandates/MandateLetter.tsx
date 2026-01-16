@@ -1,7 +1,110 @@
 import React, { useRef, useState } from 'react';
-import { PropertyDetail, Mandate, User, DealType } from '@/types'; // Added DealType
+import { PropertyDetail } from '@/types/property';
+import { Mandate, DealType } from '@/types/mandate';
+import { User } from '@/types/user';
 import SignatureCanvas from 'react-signature-canvas';
-import { Eraser, CheckCircle } from 'lucide-react';
+import { Eraser, CheckCircle, Camera } from 'lucide-react';
+
+
+interface SignatureBlockProps {
+    role: 'SELLER' | 'BROKER';
+    activeSigner?: 'SELLER' | 'BROKER';
+    isSigned: boolean;
+    signatureUrl?: string; // Existing signature from DB
+    signatureFile?: File | null; // Currently captured signature (preview)
+    selfieUrl?: string; // Selfie URL (blob or DB)
+    onSign: (file: File) => void;
+    onClear: () => void;
+    title: string;
+    subTitle: string;
+    dateStr: string;
+    name: string;
+    designation?: string;
+    isPlatform?: boolean;
+}
+
+const SignatureBlock = ({
+    role,
+    activeSigner,
+    isSigned,
+    signatureUrl,
+    signatureFile,
+    selfieUrl,
+    onSign,
+    onClear,
+    title,
+    subTitle,
+    dateStr,
+    name,
+    designation
+}: SignatureBlockProps) => {
+    // Determine if this block is currently interactive
+    // It is interactive if:
+    // 1. It matches the 'activeSigner' prop (e.g. Seller is viewing and needs to sign Seller block)
+    // 2. AND it is NOT yet signed (no URL or file)
+    const isInteractive = activeSigner === role && !isSigned && !signatureUrl && !signatureFile;
+
+    // Display Logic:
+    // Show signature image if we have a URL (saved) or File (just signed)
+    const showSignature = signatureUrl || signatureFile;
+    const signatureSrc = signatureFile ? URL.createObjectURL(signatureFile) : signatureUrl;
+
+    const showSelfie = !!selfieUrl;
+
+    return (
+        <div className="flex flex-col items-center space-y-4">
+            <div className="w-64 h-40 border-b-2 border-slate-300 relative bg-slate-50 flex items-center justify-center">
+                {/* Signature Layer */}
+                {showSignature ? (
+                    <div className="relative w-full h-full group">
+                        <img
+                            src={signatureSrc}
+                            alt={`${title} Signature`}
+                            className="w-full h-full object-contain"
+                        />
+                        {/* Allow clearing if it's a fresh file preview (not saved URL) */}
+                        {signatureFile && (
+                            <button
+                                onClick={onClear}
+                                className="absolute top-2 right-2 p-1 bg-red-100 text-red-600 rounded-full opacity-0 group-hover:opacity-100 transition-opacity"
+                                title="Clear Signature"
+                            >
+                                <Eraser className="w-4 h-4" />
+                            </button>
+                        )}
+                    </div>
+                ) : (
+                    <div className="text-slate-400 text-sm italic">
+                        {isInteractive ? "Waiting for signature..." : "Pending Signature"}
+                    </div>
+                )}
+            </div>
+
+            {/* Selfie Display (Below Signature) */}
+            {showSelfie && (
+                <div className="w-32 h-32 rounded-lg border border-slate-200 overflow-hidden shadow-sm relative group bg-gray-100">
+                    <img
+                        src={selfieUrl}
+                        alt="Verification Selfie"
+                        className="w-full h-full object-cover"
+                        onError={(e) => { e.currentTarget.style.display = 'none'; }}
+                    />
+                    <div className="absolute bottom-0 inset-x-0 bg-black/60 text-white text-[10px] py-1 text-center">
+                        Verified
+                    </div>
+                </div>
+            )}
+
+            <div className="text-center">
+                <p className="font-bold text-slate-900 text-lg uppercase tracking-wide">{name}</p>
+                <p className="text-slate-600 font-medium">{subTitle}</p>
+                {designation && <p className="text-slate-500 text-sm mt-1">{designation}</p>}
+                <p className="text-slate-400 text-xs mt-2">Date: {dateStr}</p>
+            </div>
+        </div>
+    );
+};
+
 
 interface MandateLetterProps {
     property: PropertyDetail;
@@ -13,9 +116,12 @@ interface MandateLetterProps {
     signatureUrl?: string; // Partner Signature
     ownerSignatureUrl?: string; // Owner Signature
     activeSigner?: 'SELLER' | 'BROKER'; // New Prop: Controls which slot is interactive
+    createdAt?: string; // New: Creation Timestamp
+    signedAt?: string;  // New: Signing Timestamp
+    roleTitle?: string; // e.g. "Builder", "Plotting Agency"
 }
 
-export const MandateLetter: React.FC<MandateLetterProps> = ({
+export const MandateLetter = ({
     property,
     mandate,
     dealType = DealType.WITH_BROKER, // Default
@@ -23,11 +129,14 @@ export const MandateLetter: React.FC<MandateLetterProps> = ({
     isSigned = false,
     signatureUrl,
     ownerSignatureUrl,
-    activeSigner = 'SELLER' // Default to Seller for backwards compat if needed, but Page should pass explicitly
-}) => {
+    activeSigner = 'SELLER', // Default to Seller for backwards compat if needed, but Page should pass explicitly
+    createdAt,
+    signedAt,
+    roleTitle
+}: MandateLetterProps) => {
     const [scrolledToBottom, setScrolledToBottom] = useState(false);
     const containerRef = useRef<HTMLDivElement>(null);
-    const sigPad = useRef<SignatureCanvas>(null);
+    const sigPad = useRef<any>(null);
     const [signatureFile, setSignatureFile] = useState<File | null>(null);
 
     // --- Helpers ---
@@ -40,9 +149,12 @@ export const MandateLetter: React.FC<MandateLetterProps> = ({
         });
     };
 
-    const formatDate = (date: Date) => {
+    const formatDate = (dateStr: string | Date | undefined) => {
+        if (!dateStr) return "-";
+        const date = new Date(dateStr);
         return new Intl.DateTimeFormat('en-IN', {
-            day: 'numeric', month: 'long', year: 'numeric'
+            day: 'numeric', month: 'long', year: 'numeric',
+            hour: '2-digit', minute: '2-digit', hour12: true
         }).format(date);
     };
 
@@ -78,8 +190,15 @@ export const MandateLetter: React.FC<MandateLetterProps> = ({
     const floor = property.specific_floor ? `Floor ${property.specific_floor}` : "Standard Unit";
 
     const today = new Date();
-    const startDateStr = formatDate(today);
-    const endDateStr = formatDate(calculateEndDate(today));
+    // Use createdAt if available, else today
+    const initiationDateStr = createdAt ? formatDate(createdAt) : formatDate(today);
+
+    // For end date, we ideally want creation date + 90 days, or today + 90
+    const baseDate = createdAt ? new Date(createdAt) : today;
+    const endDateStr = new Intl.DateTimeFormat('en-IN', {
+        day: 'numeric', month: 'long', year: 'numeric'
+    }).format(calculateEndDate(baseDate));
+
 
     const project = property.project_name || property.title || "Project Name";
 
@@ -93,29 +212,14 @@ export const MandateLetter: React.FC<MandateLetterProps> = ({
         }
     };
 
-    // --- Signature Logic ---
-    const clearSignature = () => {
-        sigPad.current?.clear();
-        setSignatureFile(null);
-    };
-
-    const saveSignature = () => {
-        if (sigPad.current?.isEmpty()) return;
-        sigPad.current?.getCanvas().toBlob((blob: Blob | null) => {
-            if (blob && onSign) {
-                const file = new File([blob], "signature.png", { type: "image/png" });
-                setSignatureFile(file);
-                onSign(file);
-            }
-        });
-    };
-
+    // --- Render ---
     return (
         <div className="w-full max-w-5xl mx-auto bg-slate-50 border border-slate-200 shadow-sm rounded-xl overflow-hidden my-8 font-sans text-slate-800">
             {/* Header / Brand Strip */}
             <div className="h-2 bg-slate-800 w-full" />
 
             <div
+                id="mandate-letter-content"
                 ref={containerRef}
                 onScroll={handleScroll}
                 className="p-12 md:p-16 max-h-[80vh] overflow-y-auto custom-scrollbar relative"
@@ -126,13 +230,16 @@ export const MandateLetter: React.FC<MandateLetterProps> = ({
                         MANDATE LETTER
                     </h1>
                     <p className="mt-4 text-slate-500 text-sm uppercase tracking-widest font-medium">Marketing Authority Agreement</p>
+                    <div className="mt-2 text-xs text-slate-400 font-mono">
+                        Ref: {mandate?.mandate_number || "PENDING"} | Initiated: {initiationDateStr}
+                    </div>
                 </header>
 
                 <div className="space-y-8 text-base leading-relaxed whitespace-pre-wrap">
                     {/* Date and Parties */}
                     <div className="flex justify-between items-start mb-6">
                         <div>
-                            <p><strong>Date:</strong> <span className="bg-yellow-50/50 px-1 rounded font-medium">{startDateStr}</span></p>
+                            <p><strong>Date:</strong> <span className="bg-yellow-50/50 px-1 rounded font-medium">{initiationDateStr}</span></p>
                         </div>
                     </div>
 
@@ -156,7 +263,7 @@ export const MandateLetter: React.FC<MandateLetterProps> = ({
                         <h3 className="text-lg font-bold text-slate-900 mb-2">1. Appointment</h3>
                         <p className="leading-relaxed">
                             We, <strong>{ownerName}</strong>, hereby appoint <span className="font-bold bg-yellow-50/50 px-1 rounded">{partnerName}</span> (hereinafter referred to as “the Marketing Partner”),
-                            for 90 days with effect from <strong>{startDateStr}</strong> until <strong>{endDateStr}</strong>,
+                            for 90 days with effect from <strong>{initiationDateStr}</strong> until <strong>{endDateStr}</strong>,
                             as <strong>{designation}</strong> for the property detailed below.
                         </p>
                     </section>
@@ -204,7 +311,7 @@ export const MandateLetter: React.FC<MandateLetterProps> = ({
                         <h3 className="text-lg font-bold text-slate-900 mb-2">4. Commission & Payment Terms</h3>
                         <ul className="list-disc pl-5 space-y-2 text-slate-700 leading-relaxed">
                             <li>
-                                <strong>Commission Rate:</strong> <strong>{mandate?.commission_rate || '2'}%</strong> of the total sale/lease consideration
+                                <strong>Commission Rate:</strong> <strong>{mandate?.commission_rate || '2.0'}%</strong> of the total sale/lease consideration
                                 or a fixed amount of <strong>{formatCurrency(property.total_price)}</strong> (approximate based on ask).
                             </li>
                             <li><strong>Payment Schedule:</strong> Within <strong>7 days</strong> of receipt of full payment from buyer/tenant.</li>
@@ -226,114 +333,44 @@ export const MandateLetter: React.FC<MandateLetterProps> = ({
                     {/* Section 6 - Signature */}
                     <div className="bg-slate-100/50 p-8 rounded-xl border border-slate-200">
                         <h3 className="text-xl font-serif font-bold text-center mb-8">Accepted and Agreed</h3>
+                        {signedAt && (
+                            <p className="text-center text-xs text-green-600 font-medium mb-4 flex items-center justify-center gap-1">
+                                <CheckCircle className="w-4 h-4" />
+                                Confirmed on {formatDate(signedAt)}
+                            </p>
+                        )}
 
                         <div className="grid grid-cols-1 md:grid-cols-2 gap-12">
-                            {/* Left: Owner (Initiator usually) */}
-                            <div className="flex flex-col items-center space-y-4">
-                                <div className={`w-full relative rounded-lg ${activeSigner === 'SELLER' && !isSigned && !ownerSignatureUrl ? 'border-2 border-dashed border-slate-300 bg-white hover:border-slate-400 transition-colors' : ''}`}>
-                                    {/* Logic: 
-                                        If activeSigner is SELLER: Show Canvas (unless signed).
-                                        If activeSigner is NOT SELLER: Show Image or Placeholder.
-                                    */}
-
-                                    {activeSigner === 'SELLER' && !isSigned && !ownerSignatureUrl ? (
-                                        <>
-                                            <SignatureCanvas
-                                                ref={sigPad}
-                                                penColor="black"
-                                                onEnd={saveSignature}
-                                                canvasProps={{
-                                                    className: 'w-full h-32 cursor-crosshair rounded-lg',
-                                                }}
-                                            />
-                                            {!signatureFile && (
-                                                <div className="absolute inset-0 flex items-center justify-center pointer-events-none text-slate-400">
-                                                    <span className="bg-white/80 px-2 py-1 text-sm rounded pointer-events-auto">Property Owner Sign Here</span>
-                                                </div>
-                                            )}
-                                        </>
-                                    ) : (
-                                        <div className="h-32 w-full flex items-end justify-center pb-2 border-b-2 border-slate-300 relative">
-                                            {ownerSignatureUrl ? (
-                                                <img src={ownerSignatureUrl} alt="Owner Signature" className="max-h-28 object-contain" />
-                                            ) : (
-                                                <span className="text-slate-400 text-sm font-handwriting italic text-3xl opacity-30">Pending Owner</span>
-                                            )}
-                                        </div>
-                                    )}
-                                </div>
-
-                                {activeSigner === 'SELLER' && !isSigned && !ownerSignatureUrl && signatureFile && (
-                                    <button
-                                        onClick={clearSignature}
-                                        className="text-xs text-red-500 hover:text-red-700 flex items-center gap-1"
-                                    >
-                                        <Eraser className="w-3 h-3" /> Clear Signature
-                                    </button>
-                                )}
-
-                                <div className="text-center">
-                                    <p className="font-bold text-slate-900">{ownerName}</p>
-                                    <p className="text-sm text-slate-500">Property Owner</p>
-                                    <p className="text-xs text-slate-400 mt-1">{startDateStr}</p>
-                                </div>
-                            </div>
-
-                            {/* Right: Partner (The Signer) */}
-                            <div className="flex flex-col items-center space-y-4">
-                                <div className={`w-full relative rounded-lg ${activeSigner === 'BROKER' && !isSigned && !signatureUrl ? 'border-2 border-dashed border-slate-300 bg-white hover:border-slate-400 transition-colors' : ''}`}>
-                                    {/* Logic: 
-                                        If activeSigner is BROKER: Show Canvas.
-                                        If activeSigner is NOT BROKER: Show Image or Placeholder.
-                                    */}
-
-                                    {activeSigner === 'BROKER' && !isSigned && !signatureUrl ? (
-                                        <>
-                                            <SignatureCanvas
-                                                ref={sigPad}
-                                                penColor="black"
-                                                onEnd={saveSignature}
-                                                canvasProps={{
-                                                    className: 'w-full h-32 cursor-crosshair rounded-lg',
-                                                }}
-                                            />
-                                            {!signatureFile && (
-                                                <div className="absolute inset-0 flex items-center justify-center pointer-events-none text-slate-400">
-                                                    <span className="bg-white/80 px-2 py-1 text-sm rounded pointer-events-auto">Partner Sign Here</span>
-                                                </div>
-                                            )}
-                                        </>
-                                    ) : (
-                                        <div className="h-32 w-full flex items-center justify-center">
-                                            {signatureUrl ? (
-                                                <img src={signatureUrl} alt="Signature" className="max-h-28 object-contain" />
-                                            ) : (
-                                                <div className="flex flex-col items-center text-slate-300">
-                                                    <span className="text-sm italic">Pending Partner</span>
-                                                </div>
-                                            )}
-                                        </div>
-                                    )}
-                                </div>
-
-                                {activeSigner === 'BROKER' && !isSigned && !signatureUrl && signatureFile && (
-                                    <button
-                                        onClick={clearSignature}
-                                        className="text-xs text-red-500 hover:text-red-700 flex items-center gap-1"
-                                    >
-                                        <Eraser className="w-3 h-3" /> Clear Signature
-                                    </button>
-                                )}
-
-                                <div className="text-center">
-                                    <h4 className="font-serif font-bold text-sm mb-2 uppercase text-slate-400">
-                                        {isPlatform ? "For SaudaPakka" : "For Marketing Partner"}
-                                    </h4>
-                                    <p className="font-bold text-slate-900">{isPlatform ? "SaudaPakka Authorized Signatory" : partnerName}</p>
-                                    <p className="text-sm text-slate-500">{designation}</p>
-                                    <p className="text-xs text-slate-400 mt-1">{startDateStr}</p>
-                                </div>
-                            </div>
+                            <SignatureBlock
+                                role="SELLER"
+                                activeSigner={activeSigner}
+                                isSigned={isSigned}
+                                signatureUrl={ownerSignatureUrl}
+                                signatureFile={signatureFile}
+                                selfieUrl={mandate?.seller_selfie || undefined}
+                                onSign={(file) => { setSignatureFile(file); if (onSign) onSign(file); }}
+                                onClear={() => setSignatureFile(null)}
+                                title={roleTitle || "Property Owner"}
+                                subTitle={roleTitle || "Owner"}
+                                dateStr={initiationDateStr}
+                                name={ownerName}
+                            />
+                            <SignatureBlock
+                                role="BROKER"
+                                activeSigner={activeSigner}
+                                isSigned={isSigned}
+                                signatureUrl={signatureUrl}
+                                signatureFile={signatureFile}
+                                selfieUrl={mandate?.broker_selfie || undefined}
+                                onSign={(file) => { setSignatureFile(file); if (onSign) onSign(file); }}
+                                onClear={() => setSignatureFile(null)}
+                                title="Partner"
+                                subTitle={isPlatform ? "For SaudaPakka" : "For Marketing Partner"}
+                                dateStr={signedAt ? formatDate(signedAt) : (isSigned ? initiationDateStr : "Pending")}
+                                name={isPlatform ? "SaudaPakka Authorized Signatory" : partnerName}
+                                designation={designation}
+                                isPlatform={isPlatform}
+                            />
                         </div>
                     </div>
                 </div>
